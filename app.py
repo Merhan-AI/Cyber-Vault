@@ -40,6 +40,19 @@ total_risk = total_enterprise_risk(df)
 st.title("🛡️ AI-Powered Cyber Risk Quantification Platform")
 st.caption("SIH26105 — Prototype | Converting technical cyber risk into financial exposure (₹)")
 
+# --- Traditional vs Our Approach ---
+comp_col1, comp_col2 = st.columns(2)
+comp_col1.error(
+    "**Traditional Approach**  \n"
+    "**Risk Level:** Medium  \n"
+    "*No financial context, hard to act on*"
+)
+comp_col2.success(
+    f"**Our Approach**  \n"
+    f"**Expected Annual Loss:** {format_inr(total_risk)}  \n"
+    "*Clear, actionable, business-ready*"
+)
+
 # --- Top summary ---
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Enterprise Risk (Expected Annual Loss)", format_inr(total_risk))

@@ -37,7 +37,7 @@ def load_data():
 df = load_data()
 total_risk = total_enterprise_risk(df)
 
-st.title("🛡️ AI-Powered Cyber Risk Quantification Platform")
+st.title("AI-Powered Cyber Risk Quantification Platform")
 st.caption("SIH26105 — Prototype | Converting technical cyber risk into financial exposure (₹)")
 
 # --- Traditional vs Our Approach ---
@@ -53,6 +53,89 @@ comp_col2.success(
     "*Clear, actionable, business-ready*"
 )
 
+# --- Ask the Platform (Chat UI) ---
+
+# Initialize chat history in session state
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+
+
+def get_answer(question):
+    """Return an answer string based on keyword matching."""
+    q = question.lower()
+
+    # Handle follow-up questions ("why", "explain", "how do you know")
+    if any(kw in q for kw in ("why", "explain", "how do you know", "how is that")):
+        # Check if the previous assistant message mentioned a specific asset
+        prev_msgs = [m for m in st.session_state.chat_history if m["role"] == "assistant"]
+        if prev_msgs:
+            last = prev_msgs[-1]["content"]
+            match = df[df["asset_name"].apply(lambda n: n in last)]
+            if len(match):
+                asset = match.iloc[0]
+                return (
+                    f"**{asset['asset_name']}** has an Expected Annual Loss of "
+                    f"**{format_inr(asset['expected_annual_loss_inr'])}**, calculated as:\n\n"
+                    f"> **Likelihood of Attack** ({asset['likelihood_pct']:.0f}%) "
+                    f"x **Financial Impact** ({format_inr(asset['impact_inr'])}) "
+                    f"x **Asset Criticality Weight** ({asset['criticality_weight']:.2f})\n\n"
+                    f"A higher value in any of these three factors raises the "
+                    f"Expected Annual Loss proportionally."
+                )
+
+    if "highest risk" in q or "biggest risk" in q:
+        top = df.iloc[0]
+        return (f"Your highest financial risk is **{top['asset_name']}**, "
+                f"with an Expected Annual Loss of "
+                f"**{format_inr(top['expected_annual_loss_inr'])}**.")
+    elif "total risk" in q or "total exposure" in q:
+        return (f"Your total enterprise cyber risk exposure is "
+                f"**{format_inr(total_risk)}** per year.")
+    elif "budget" in q or "invest" in q:
+        return ("Check the **Investment Optimization** section below to see "
+                "budget recommendations and risk reduction analysis.")
+    else:
+        return ("This prototype currently answers questions about highest risk, "
+                "total exposure, and budget recommendations. (A full version would "
+                "use an LLM to answer any natural-language question over this data.)")
+
+
+with st.container(border=True):
+    st.subheader("Ask the Platform")
+
+    # Reduce gap between buttons and chat history
+    st.markdown(
+        "<style>div[data-testid='stChatInput'] {margin-top: 0;} "
+        ".stColumns + div[data-testid='stChatMessage'] {margin-top: -0.5rem;}</style>",
+        unsafe_allow_html=True,
+    )
+
+    # Example question buttons
+    eq1, eq2, eq3 = st.columns(3, gap="small")
+    if eq1.button("What's our highest risk?", use_container_width=True):
+        st.session_state.chat_history.append({"role": "user", "content": "What's our highest risk?"})
+        st.session_state.chat_history.append({"role": "assistant", "content": get_answer("What's our highest risk?")})
+    if eq2.button("What's our total exposure?", use_container_width=True):
+        st.session_state.chat_history.append({"role": "user", "content": "What's our total exposure?"})
+        st.session_state.chat_history.append({"role": "assistant", "content": get_answer("What's our total exposure?")})
+    if eq3.button("Budget recommendation?", use_container_width=True):
+        st.session_state.chat_history.append({"role": "user", "content": "Budget recommendation?"})
+        st.session_state.chat_history.append({"role": "assistant", "content": get_answer("Budget recommendation?")})
+
+    # Display chat history
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # Chat input
+    if prompt := st.chat_input(placeholder="Ask anything about your cyber risk..."):
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        st.session_state.chat_history.append({"role": "assistant", "content": get_answer(prompt)})
+        st.rerun()
+
+st.divider()
+
 # --- Top summary ---
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Enterprise Risk (Expected Annual Loss)", format_inr(total_risk))
@@ -62,13 +145,13 @@ col3.metric("High-Criticality Assets", int((df["criticality_weight"] > 0.7).sum(
 st.divider()
 
 # --- Top risky assets ---
-st.subheader("🔥 Top 5 Riskiest Assets")
+st.subheader("Top 5 Riskiest Assets")
 st.dataframe(top_risky_assets(df), use_container_width=True, hide_index=True)
 
 st.divider()
 
 # --- Investment Optimization ---
-st.subheader("💰 Investment Optimization")
+st.subheader("Investment Optimization")
 budget = st.slider(
     "Security Budget (₹)", min_value=0, max_value=2_00_00_000, value=1_00_00_000, step=5_00_000,
     format="₹%d",
@@ -102,32 +185,11 @@ st.line_chart(curve.set_index("budget_inr"))
 st.divider()
 
 # --- AI Decision Support / Risk Drivers ---
-st.subheader("🧠 AI Risk Drivers (ML Layer)")
+st.subheader("AI Risk Drivers (ML Layer)")
 model, importance, mae = train_likelihood_model(df)
 st.write("Which factors contribute most to attack likelihood, according to the model:")
 st.bar_chart(importance.head(8))
 
-st.divider()
-
-# --- Simple NL query ---
-st.subheader("💬 Ask the Platform")
-query = st.text_input("Ask a question, e.g. 'What is our highest risk today?'")
-
-if query:
-    q = query.lower()
-    if "highest risk" in q or "biggest risk" in q:
-        top = df.iloc[0]
-        st.info(f"Your highest financial risk is **{top['asset_name']}**, "
-                f"with an Expected Annual Loss of **{format_inr(top['expected_annual_loss_inr'])}**.")
-    elif "total risk" in q or "total exposure" in q:
-        st.info(f"Your total enterprise cyber risk exposure is **{format_inr(total_risk)}** per year.")
-    elif "budget" in q or "invest" in q:
-        st.info(f"With a budget of {format_inr(budget)}, remediating the top "
-                f"{len(selected)} assets reduces risk by **{format_inr(reduced)}**.")
-    else:
-        st.info("This prototype currently answers questions about highest risk, "
-                "total exposure, and budget recommendations. (A full version would "
-                "use an LLM to answer any natural-language question over this data.)")
 
 st.divider()
 st.caption("Prototype built for SIH26105 — Team demo. Data shown is synthetic, generated to "

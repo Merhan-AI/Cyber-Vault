@@ -1,0 +1,41 @@
+asset_id,asset_name,asset_type,vulnerability_count,likelihood_pct,likelihood,potential_financial_impact_inr,criticality_weight
+A001,Payment Gateway,API Gateway,16,40.75,0.4075,6800000,0.73
+A002,Internal Wiki,Database,13,31.64,0.3164,14600000,0.81
+A003,Analytics Dashboard,Web Application,20,49.4,0.494,7000000,0.93
+A004,Support Portal,Cloud Storage,10,27.34,0.2734,12400000,0.3
+A005,Payment Gateway,Internal Tool,22,53.39,0.5339,1400000,0.67
+A006,Email Server,API Gateway,17,45.11,0.4511,5600000,0.9
+A007,Partner API,API Gateway,18,43.66,0.4366,3300000,0.14
+A008,Analytics Dashboard,Web Application,18,51.71,0.5171,10400000,0.97
+A009,Cloud File Storage,Payment System,22,52.08,0.5208,5800000,0.27
+A010,VPN Gateway,Web Application,17,34.88,0.3488,7300000,0.7
+A011,Data Warehouse,Email Server,4,7.14,0.0714,12500000,0.38
+A012,Support Portal,API Gateway,10,25.58,0.2558,12100000,0.36
+A013,Internal Wiki,Cloud Storage,15,38.39,0.3839,2500000,0.11
+A014,Support Portal,API Gateway,19,35.71,0.3571,10100000,0.8
+A015,Backup Server,Email Server,12,27.62,0.2762,8700000,0.2
+A016,Cloud File Storage,Cloud Storage,16,28.59,0.2859,7300000,0.79
+A017,Backup Server,Cloud Storage,14,36.56,0.3656,8500000,0.37
+A018,Marketing Website,Database,8,25.29,0.2529,6800000,0.47
+A019,Vendor Management Tool,API Gateway,0,1.0,0.01,3800000,0.35
+A020,Data Warehouse,Payment System,10,22.86,0.2286,10000000,0.81
+A021,Vendor Management Tool #21,Cloud Storage,10,27.28,0.2728,6300000,0.25
+A022,CRM Platform #22,Database,2,3.02,0.0302,1800000,0.52
+A023,Inventory System #23,Web Application,22,51.4,0.514,7700000,0.73
+A024,VPN Gateway #24,Email Server,4,10.88,0.1088,6000000,0.67
+A025,Marketing Website #25,Payment System,23,44.39,0.4439,1700000,0.97
+A026,Billing API #26,Employee Endpoint,12,27.11,0.2711,10600000,0.97
+A027,Employee Laptop Fleet #27,API Gateway,6,12.33,0.1233,10800000,0.35
+A028,Payment Gateway #28,Database,11,31.2,0.312,13500000,0.28
+A029,Inventory System #29,Payment System,20,42.03,0.4203,8800000,0.87
+A030,Customer Database #30,API Gateway,12,30.16,0.3016,10900000,0.66
+A031,HR System #31,Internal Tool,2,3.88,0.0388,9900000,0.47
+A032,Support Portal #32,Database,4,17.18,0.1718,7600000,0.23
+A033,Partner API #33,Database,4,9.8,0.098,9000000,0.93
+A034,Vendor Management Tool #34,Internal Tool,11,30.18,0.3018,5500000,0.12
+A035,Email Server #35,Employee Endpoint,10,26.57,0.2657,7400000,0.17
+A036,Employee Laptop Fleet #36,Email Server,16,39.07,0.3907,7600000,0.61
+A037,Analytics Dashboard #37,Email Server,20,40.94,0.4094,4300000,0.57
+A038,Mobile App Backend #38,Email Server,7,24.33,0.2433,800000,0.91
+A039,Analytics Dashboard #39,Web Application,7,10.63,0.1063,8500000,0.71
+A040,HR System #40,Payment System,6,25.84,0.2584,10000000,0.79

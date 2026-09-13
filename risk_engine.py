@@ -52,6 +52,19 @@ def format_inr(amount: float) -> str:
     return f"₹{','.join(parts)},{last3}"
 
 
+def format_inr_short(amount: float) -> str:
+    """Compact Indian Rupee format: ₹45,000 / ₹3.13L / ₹1.2Cr."""
+    amount = abs(float(amount))
+    if amount >= 1_00_00_000:
+        val = amount / 1_00_00_000
+        return f"₹{val:.1f}Cr" if val != int(val) else f"₹{int(val)}Cr"
+    elif amount >= 1_00_000:
+        val = amount / 1_00_000
+        return f"₹{val:.2f}L" if val != round(val, 1) else f"₹{val:.1f}L"
+    else:
+        return format_inr(amount)
+
+
 if __name__ == "__main__":
     df = pd.read_csv("data/assets.csv")
     df = calculate_risk(df)

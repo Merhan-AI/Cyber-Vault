@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from generate_data import generate_dataset
-from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets, format_inr
+from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets, format_inr, format_inr_short
 from ml_layer import train_likelihood_model
 from optimizer import build_remediation_options, optimize_budget, risk_reduction_curve
 from data_ingestion import ingest_user_data
@@ -96,7 +96,7 @@ comp_col1.error(
 )
 comp_col2.success(
     f"**Our Approach**  \n"
-    f"**Expected Annual Loss:** {format_inr(total_risk)}  \n"
+    f"**Expected Annual Loss:** {format_inr_short(total_risk)}  \n"
     "*Clear, actionable, business-ready*"
 )
 
@@ -123,9 +123,9 @@ def get_answer(question):
                 asset = match.iloc[0]
                 return (
                     f"**{asset['asset_name']}** has an Expected Annual Loss of "
-                    f"**{format_inr(asset['expected_annual_loss_inr'])}**, calculated as:\n\n"
+                    f"**{format_inr_short(asset['expected_annual_loss_inr'])}**, calculated as:\n\n"
                     f"> **Likelihood of Attack** ({asset['likelihood_pct']:.0f}%) "
-                    f"x **Financial Impact** ({format_inr(asset['impact_inr'])}) "
+                    f"x **Financial Impact** ({format_inr_short(asset['impact_inr'])}) "
                     f"x **Asset Criticality Weight** ({asset['criticality_weight']:.2f})\n\n"
                     f"A higher value in any of these three factors raises the "
                     f"Expected Annual Loss proportionally."
@@ -135,10 +135,10 @@ def get_answer(question):
         top = df.iloc[0]
         return (f"Your highest financial risk is **{top['asset_name']}**, "
                 f"with an Expected Annual Loss of "
-                f"**{format_inr(top['expected_annual_loss_inr'])}**.")
+                f"**{format_inr_short(top['expected_annual_loss_inr'])}**.")
     elif "total risk" in q or "total exposure" in q:
         return (f"Your total enterprise cyber risk exposure is "
-                f"**{format_inr(total_risk)}** per year.")
+                f"**{format_inr_short(total_risk)}** per year.")
     elif "budget" in q or "invest" in q:
         return ("Check the **Investment Optimization** section below to see "
                 "budget recommendations and risk reduction analysis.")
@@ -185,7 +185,7 @@ st.divider()
 
 # --- Top summary ---
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Enterprise Risk (Expected Annual Loss)", format_inr(total_risk))
+col1.metric("Total Enterprise Risk (Expected Annual Loss)", format_inr_short(total_risk))
 col2.metric("Assets Monitored", len(df))
 col3.metric("High-Criticality Assets", int((df["criticality_weight"] > 0.7).sum()))
 
@@ -199,23 +199,41 @@ st.divider()
 
 # --- Investment Optimization ---
 st.subheader("Investment Optimization")
-budget = st.slider(
-    "Security Budget (₹)", min_value=0, max_value=2_00_00_000, value=1_00_00_000, step=5_00_000,
-    format="₹%d",
-)
+
+slider_col, custom_col = st.columns([3, 1])
+with slider_col:
+    slider_budget = st.select_slider(
+        "Security Budget",
+        options=list(range(0, 2_00_00_001, 5_00_000)),
+        value=1_00_00_000,
+        format_func=format_inr_short,
+    )
+with custom_col:
+    custom_budget = st.number_input(
+        "Add Custom Budget (₹)",
+        min_value=0,
+        max_value=50_00_00_000,
+        value=0,
+        step=1_00_000,
+        help="Enter an exact budget amount. When set above 0, this overrides the slider.",
+    )
+
+budget = custom_budget if custom_budget > 0 else slider_budget
 
 selected = optimize_budget(df, budget)
 reduced = selected["risk_reduction_inr"].sum() if len(selected) else 0
 
 c1, c2 = st.columns(2)
 c1.metric("Recommended Assets to Remediate", len(selected))
-c2.metric("Total Risk Reduced", format_inr(reduced))
+c2.metric("Total Risk Reduced", format_inr_short(reduced))
 
 if len(selected):
     st.write("Recommended remediation plan for this budget:")
+    display_df = selected[["asset_name", "asset_type", "remediation_cost_inr", "risk_reduction_inr"]].copy()
+    display_df["remediation_cost_inr"] = display_df["remediation_cost_inr"].map(format_inr_short)
+    display_df["risk_reduction_inr"] = display_df["risk_reduction_inr"].map(format_inr_short)
     st.dataframe(
-        selected[["asset_name", "asset_type", "remediation_cost_inr", "risk_reduction_inr"]]
-        .rename(columns={
+        display_df.rename(columns={
             "asset_name": "Asset",
             "asset_type": "Type",
             "remediation_cost_inr": "Cost (₹)",

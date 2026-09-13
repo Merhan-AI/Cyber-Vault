@@ -15,6 +15,7 @@ from generate_data import generate_dataset
 from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets, format_inr
 from ml_layer import train_likelihood_model
 from optimizer import build_remediation_options, optimize_budget, risk_reduction_curve
+from data_ingestion import ingest_user_data
 
 st.set_page_config(page_title="Cyber Risk Quantification Platform", layout="wide")
 
@@ -34,7 +35,53 @@ def load_data():
     return df
 
 
-df = load_data()
+# --- Data Source Selection (Sidebar) ---
+st.sidebar.header("📁 Data Source")
+data_source = st.sidebar.radio(
+    "Choose data source:",
+    ["Demo Data (Synthetic)", "Upload Your Own Data"],
+    index=0,
+)
+
+if data_source == "Upload Your Own Data":
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload your asset/vulnerability data",
+        type=["csv", "xlsx", "xls", "json", "txt"],
+        help="Upload a CSV, Excel, JSON, or text file containing your asset inventory, "
+             "vulnerability scan results, or any cyber risk data. The platform will "
+             "automatically map your columns and fill in any missing fields."
+    )
+    if uploaded_file is not None:
+        df, messages = ingest_user_data(uploaded_file)
+
+        # Show mapping/warning messages to user
+        for msg in messages:
+            if msg.startswith("❌"):
+                st.sidebar.error(msg)
+            elif msg.startswith("⚠️"):
+                st.sidebar.warning(msg)
+            elif msg.startswith("✅"):
+                st.sidebar.success(msg)
+            else:
+                st.sidebar.info(msg)
+
+        if len(df) == 0:
+            st.error("Could not process the uploaded file. Please check the messages in the sidebar.")
+            st.stop()
+
+        # Show a preview of the processed data
+        with st.sidebar.expander("Preview processed data"):
+            st.dataframe(df.head(10))
+
+        # Run the full pipeline on user data
+        df = calculate_risk(df)
+        df = build_remediation_options(df)
+    else:
+        st.sidebar.warning("Please upload a file to continue, or switch to Demo Data.")
+        st.stop()
+else:
+    df = load_data()
+
 total_risk = total_enterprise_risk(df)
 
 st.title("🛡️ AI-Powered Cyber Risk Quantification Platform")

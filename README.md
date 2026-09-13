@@ -41,6 +41,38 @@ Then open the URL Streamlit prints (usually `http://localhost:8501`).
 5. **Dashboard** → `app.py` is the executive-facing view: total risk,
    top risky assets, a live budget slider, and a simple Q&A box.
 
+## Upload Your Own Data
+
+The platform now accepts real-world data! Click **"Upload Your Own Data"** in the sidebar and upload a CSV, Excel, JSON, or text file containing your asset information.
+
+### What columns does it expect?
+
+The platform works best when your data includes these fields (but it will auto-fill missing ones):
+
+| Field | Description | Example |
+|---|---|---|
+| asset_name | Name of the IT asset | "Customer Database" |
+| asset_type | Category of asset | "Database", "Web Application" |
+| vulnerability_count | Number of known vulnerabilities | 12 |
+| likelihood | Probability of breach (0 to 1) | 0.35 |
+| potential_financial_impact_inr | Cost if breached (₹) | 5000000 |
+| criticality_weight | Business importance (0 to 1) | 0.8 |
+
+### What if my columns are named differently?
+
+The platform automatically maps common column name variations. For example:
+- "hostname" → asset_name
+- "cve_count" → vulnerability_count
+- "probability" → likelihood
+- "impact" → potential_financial_impact_inr
+
+### What if I'm missing some columns?
+
+The platform fills in reasonable defaults:
+- Missing likelihood → estimated from vulnerability count, or 0.30 (moderate risk)
+- Missing financial impact → ₹50,00,000
+- Missing criticality → 0.50 (moderate)
+
 ## Important note for judges/demo
 
 The dataset is **synthetic**, generated to demonstrate the platform's

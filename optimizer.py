@@ -37,7 +37,7 @@ def build_remediation_options(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def optimize_budget(df: pd.DataFrame, budget: float) -> pd.DataFrame:
+def optimize_budget(df: pd.DataFrame, budget: float, include_explanation: bool = False) -> pd.DataFrame:
     """
     Greedy allocation: sort assets by risk-reduction-per-rupee (best ROI
     first) and keep adding remediations until the budget runs out.
@@ -51,7 +51,109 @@ def optimize_budget(df: pd.DataFrame, budget: float) -> pd.DataFrame:
             selected_rows.append(row)
             remaining_budget -= row["remediation_cost_inr"]
 
-    return pd.DataFrame(selected_rows)
+    res = pd.DataFrame(selected_rows)
+    if include_explanation and len(res):
+        res["explanation"] = explain_budget_allocation(res, budget=budget)
+    return res
+
+
+def explain_asset_choice(row: pd.Series, rank: int = 1) -> str:
+    """Explain in plain English why an individual asset was prioritized."""
+    name = row.get("asset_name", "Asset")
+    cost = row.get("remediation_cost_inr", 0)
+    reduction = row.get("risk_reduction_inr", 0)
+    ratio = row.get("reduction_per_rupee", 0)
+    if (ratio == 0 or pd.isna(ratio)) and cost > 0:
+        ratio = reduction / cost
+
+    try:
+        from risk_engine import format_inr
+        cost_str = format_inr(cost)
+        red_str = format_inr(reduction)
+    except ImportError:
+        cost_str = f"₹{int(round(cost)):,}"
+        red_str = f"₹{int(round(reduction)):,}"
+
+    if rank == 1:
+        return (
+            f"'{name}' was prioritized #1 because it offers the highest risk reduction per rupee spent "
+            f"across all assets. Remediating it costs {cost_str} and eliminates {red_str} in expected annual loss, "
+            f"yielding the top return of ₹{ratio:.2f} of risk mitigated for every ₹1 invested."
+        )
+    else:
+        return (
+            f"'{name}' was prioritized #{rank} because it offers high risk reduction per rupee spent "
+            f"(₹{ratio:.2f} risk reduced per ₹1 spent), eliminating {red_str} in expected annual loss for a "
+            f"remediation cost of {cost_str}."
+        )
+
+
+def explain_budget_allocation(
+    selected: pd.DataFrame,
+    budget: float = None,
+    as_text: bool = False,
+) -> list[str] | str:
+    """
+    Explains in plain English why specific assets were chosen for a given budget.
+
+    Parameters:
+        selected (pd.DataFrame): DataFrame of selected assets (from optimize_budget),
+                                 or full asset candidates DataFrame if budget is provided.
+        budget (float, optional): Total security budget allocated.
+        as_text (bool, optional): If True, returns a formatted plain-English text report.
+                                  If False (default), returns a list of individual asset
+                                  plain-English explanations.
+
+    Returns:
+        list[str] or str: Plain-English explanation(s).
+    """
+    try:
+        from risk_engine import format_inr
+    except ImportError:
+        def format_inr(amount: float) -> str:
+            return f"₹{int(round(amount)):,}"
+
+    # If full candidate dataframe was passed with a budget, run optimization first
+    if budget is not None and len(selected) > 0 and "remediation_cost_inr" in selected.columns:
+        if selected["remediation_cost_inr"].sum() > budget:
+            selected = optimize_budget(selected, budget)
+
+    if selected is None or len(selected) == 0:
+        msg = (
+            f"No assets could be remediated within the allocated budget of {format_inr(budget)} "
+            "because all remediation costs exceed the available funds."
+            if budget is not None
+            else "No assets were selected for remediation."
+        )
+        return msg if as_text else [msg]
+
+    explanations = []
+    for rank, (_, row) in enumerate(selected.iterrows(), start=1):
+        explanations.append(explain_asset_choice(row, rank=rank))
+
+    if as_text:
+        total_cost = selected["remediation_cost_inr"].sum()
+        total_reduction = selected["risk_reduction_inr"].sum()
+        remaining = (budget - total_cost) if budget is not None else 0
+        budget_str = f" of {format_inr(budget)}" if budget is not None else ""
+
+        header = [
+            "=== Security Budget Allocation Rationale ===",
+            "Allocation Strategy: Greedy Knapsack Optimization (maximizing risk reduction per rupee spent).",
+            f"Summary: With a total budget{budget_str}, {len(selected)} asset(s) were selected for remediation.",
+            f"Total Investment: {format_inr(total_cost)}" + (f" (Remaining Unallocated: {format_inr(remaining)})" if budget is not None else ""),
+            f"Total Risk Reduced: {format_inr(total_reduction)} in Expected Annual Loss.",
+            "\nDetailed Asset Prioritization Reasons:",
+        ]
+        bullet_points = [f"{i+1}. {exp}" for i, exp in enumerate(explanations)]
+        return "\n".join(header + bullet_points)
+
+    return explanations
+
+
+# Aliases for flexible API usage
+explain_selection = explain_budget_allocation
+explain_asset_selection = explain_budget_allocation
 
 
 def risk_reduction_curve(df: pd.DataFrame, max_budget: float, steps: int = 20) -> pd.DataFrame:
@@ -81,3 +183,15 @@ if __name__ == "__main__":
     print(f"Assets remediated: {len(selected)}")
     print(f"Total risk reduced: {format_inr(selected['risk_reduction_inr'].sum())}\n")
     print(selected[["asset_name", "remediation_cost_inr", "risk_reduction_inr"]].to_string(index=False))
+
+    print("\n" + "=" * 60)
+    print("PLAIN-ENGLISH EXPLANATIONS (Top 5 Selected Assets):")
+    print("=" * 60)
+    for exp in explain_selection(selected.head(5), budget):
+        print(f"• {exp}\n")
+
+    print("=" * 60)
+    print("EXECUTIVE SUMMARY (as_text=True):")
+    print("=" * 60)
+    print(explain_selection(selected.head(3), budget, as_text=True))
+

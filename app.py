@@ -20,7 +20,63 @@ from optimizer import build_remediation_options, optimize_budget, risk_reduction
 from data_ingestion import ingest_user_data
 from ai_config import ask_ai, get_status, is_ai_configured
 
-st.set_page_config(page_title="Cyber Risk Quantification Platform", layout="wide")
+st.set_page_config(page_title="Cyber-Vault | ROI-Driven Risk", layout="wide", initial_sidebar_state="collapsed")
+
+# =====================================================================
+# 1. Sleek Custom CSS (Hides sidebar entirely, styles tabs & metric cards)
+# =====================================================================
+st.markdown('''
+<style>
+    [data-testid="collapsedControl"] { display: none !important; }
+    section[data-testid="stSidebar"] { display: none !important; }
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 95%; }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2rem;
+        border-bottom: 1px solid #333;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 55px;
+        white-space: pre-wrap;
+        background-color: transparent;
+        font-size: 16px;
+        font-weight: 500;
+        color: #888;
+        border-radius: 4px 4px 0 0;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #00d4ff !important;
+        border-bottom: 3px solid #00d4ff !important;
+    }
+    div[data-testid="stMetricValue"] {
+        color: #00d4ff;
+    }
+    .usp-header {
+        background: linear-gradient(90deg, #121212 0%, #1e1e1e 100%);
+        padding: 3rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        border-left: 6px solid #00d4ff;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .usp-title {
+        margin: 0;
+        font-size: 3rem;
+        font-weight: 800;
+        color: #ffffff;
+        letter-spacing: -1px;
+    }
+    .usp-subtitle {
+        margin: 0;
+        font-size: 1.3rem;
+        color: #aaaaaa;
+        margin-top: 0.8rem;
+    }
+</style>
+''', unsafe_allow_html=True)
+
 
 DATA_PATH = "data/assets.csv"
 
@@ -38,30 +94,61 @@ def load_data():
     return df
 
 
-# =====================================================================
-# SIDEBAR — Navigation Menu
-# =====================================================================
-st.sidebar.header("Navigation")
-nav_choice = st.sidebar.radio(
-    "Go to",
-    [
-        "Upload Your Company's Data",
-        "Overview",
-        "Ask the Platform",
-        "Risk Analysis",
-        "Investment Optimization",
-        "Explainability",
-    ],
-    index=0,
-)
 
 
+
+
+if "data_source" not in st.session_state:
+    st.session_state.data_source = None
 if "custom_df" not in st.session_state:
     st.session_state.custom_df = None
-if "data_source" not in st.session_state:
-    st.session_state.data_source = "Demo Data (Synthetic)"
 
-if st.session_state.custom_df is not None:
+
+# =====================================================================
+# APP ROUTING: 1. THE UPLOAD GATEWAY (FIRST IMPRESSION)
+# =====================================================================
+if st.session_state.data_source is None:
+    st.markdown('''
+        <div class="usp-header">
+            <h1 class="usp-title">🛡️ Cyber-Vault</h1>
+            <p class="usp-subtitle">Stop guessing. Start quantifying.<br>Translate technical cyber risk into financial intelligence and optimize your security ROI.</p>
+        </div>
+    ''', unsafe_allow_html=True)
+    
+    st.write("### Initialize Workspace")
+    st.write("Upload your infrastructure data to instantly quantify your risk exposure in terms of Expected Annual Loss (₹).")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 1], gap="large")
+    with col1:
+        with st.container(border=True):
+            st.subheader("📂 Upload Company Data")
+            st.write("Upload your asset inventory (CSV or Excel) containing vulnerability and criticality data.")
+            uploaded_file = st.file_uploader("Drop file here", type=["csv", "xlsx"], label_visibility="collapsed")
+            if uploaded_file:
+                with st.spinner("Analyzing and quantifying risk..."):
+                    parsed_df, msgs = ingest_user_data(uploaded_file)
+                    if len(parsed_df) == 0:
+                        st.error("Could not process the uploaded file.")
+                        for m in msgs: st.error(m)
+                    else:
+                        parsed_df = calculate_risk(parsed_df)
+                        parsed_df = build_remediation_options(parsed_df)
+                        st.session_state.custom_df = parsed_df
+                        st.session_state.data_source = "custom"
+                        st.rerun()
+    with col2:
+        with st.container(border=True):
+            st.subheader("🚀 Explore Demo Environment")
+            st.write("Don't have data on hand? See the platform in action using our pre-generated synthetic enterprise dataset.")
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Load Demo Data", type="primary", use_container_width=True):
+                st.session_state.data_source = "demo"
+                st.rerun()
+                
+    st.stop()
+
+if st.session_state.data_source == "custom":
     df = st.session_state.custom_df
 else:
     df = load_data()
@@ -69,11 +156,32 @@ else:
 _ai_status = get_status()
 total_risk = total_enterprise_risk(df)
 
-# =====================================================================
-# HEADER
-# =====================================================================
-st.title("Cyber Risk Quantification Platform")
-st.caption("SIH26105 Prototype | Converting technical cyber risk into financial exposure (₹)")
+
+# --- HEADER ROW ---
+colA, colB = st.columns([4, 1])
+with colA:
+    st.markdown('''
+        <h2 style='margin-bottom:0;'>🛡️ Cyber-Vault Platform</h2>
+        <p style='color:#aaaaaa; margin-top:0;'>Translating Technical Cyber Risk into Financial Intelligence</p>
+    ''', unsafe_allow_html=True)
+with colB:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🔌 Disconnect & Upload New Data", use_container_width=True):
+        st.session_state.data_source = None
+        st.session_state.custom_df = None
+        st.rerun()
+
+st.divider()
+
+# --- MAIN NAVIGATION TABS ---
+tab_exec, tab_analytics, tab_roi, tab_chat, tab_xai = st.tabs([
+    "📊 Executive Overview",
+    "📈 Risk Analytics",
+    "💰 ROI & Budget Optimizer",
+    "🤖 AI Risk Chat",
+    "🔍 Explainability (XAI)"
+])
+
 
 
 # =====================================================================
@@ -219,70 +327,7 @@ model, importance, mae = train_likelihood_model(df)
 # SECTIONS (Routed by Sidebar Navigation)
 # =====================================================================
 
-if nav_choice == "Upload Your Company's Data":
-    with st.container(border=True):
-        st.subheader("Upload Your Company's Data")
-        st.write(
-            "Welcome to the **Cyber Risk Quantification Platform** (SIH26105). "
-            "Our system ingests your technical vulnerability scans, asset inventories, "
-            "and business context to translate cyber risk into actuarial financial exposure (₹)."
-        )
-
-        data_source = st.radio(
-            "Choose data source:",
-            ["Demo Data (Synthetic)", "Upload Your Own Data"],
-            index=0 if st.session_state.data_source == "Demo Data (Synthetic)" else 1,
-        )
-        st.session_state.data_source = data_source
-
-        if data_source == "Upload Your Own Data":
-            uploaded_file = st.file_uploader(
-                "Upload your asset/vulnerability data",
-                type=["csv", "xlsx", "xls", "json", "txt"],
-                help="Upload a CSV, Excel, JSON, or text file containing your asset inventory, "
-                     "vulnerability scan results, or any cyber risk data. The platform will "
-                     "automatically map your columns and fill in any missing fields."
-            )
-            if uploaded_file is not None:
-                parsed_df, messages = ingest_user_data(uploaded_file)
-                for msg in messages:
-                    if msg.startswith("❌"):
-                        st.error(msg)
-                    elif msg.startswith("⚠️"):
-                        st.warning(msg)
-                    elif msg.startswith("✅"):
-                        st.success(msg)
-                    else:
-                        st.info(msg)
-
-                if len(parsed_df) == 0:
-                    st.error("Could not process the uploaded file. Please check the messages above.")
-                else:
-                    parsed_df = calculate_risk(parsed_df)
-                    parsed_df = build_remediation_options(parsed_df)
-                    st.session_state.custom_df = parsed_df
-                    with st.expander("Preview processed data"):
-                        st.dataframe(parsed_df.head(10))
-                    st.success("Data successfully loaded and quantified! Use the sidebar to explore your risk analysis.")
-        else:
-            st.session_state.custom_df = None
-            st.info("Using baseline synthetic demo data. You can explore all platform sections using the sidebar navigation.")
-
-        st.divider()
-        st.subheader("AI Chatbot Settings")
-        if _ai_status["configured"]:
-            st.success(
-                f"✅ **{_ai_status['provider'].capitalize()}** ({_ai_status['model']})\n\n"
-                f"Key: `{_ai_status['key_preview']}`"
-            )
-        else:
-            st.warning(
-                f"⚠️ No API key configured.\n\n"
-                f"Edit `.env` and set `{_ai_status['provider'].upper()}_API_KEY`.\n\n"
-                f"To switch providers, change `AI_PROVIDER` in `.env`."
-            )
-
-elif nav_choice == "Overview":
+with tab_exec:
     # --- Traditional vs Our Approach ---
     with st.container(border=True):
         comp_col1, comp_col2 = st.columns(2)
@@ -307,7 +352,7 @@ elif nav_choice == "Overview":
         col4.metric("High-Criticality Assets", int((df["criticality_weight"] > 0.7).sum()))
         st.info(format_var_summary(_var_95, total_risk))
 
-elif nav_choice == "Ask the Platform":
+with tab_chat:
     with st.container(border=True):
         st.subheader("Ask the Platform")
 
@@ -359,7 +404,7 @@ elif nav_choice == "Ask the Platform":
             )})
             st.rerun()
 
-elif nav_choice == "Risk Analysis":
+with tab_analytics:
     # --- Top Risky Assets ---
     with st.container(border=True):
         st.subheader("Top 5 Riskiest Assets")
@@ -455,7 +500,7 @@ elif nav_choice == "Risk Analysis":
             composition = top10.rename(columns={"asset_name": "Asset"})[["Asset", "Likelihood Score", "Criticality Multiplier"]].set_index("Asset")
             st.bar_chart(composition)
 
-elif nav_choice == "Investment Optimization":
+with tab_roi:
     with st.container(border=True):
         st.subheader("Investment Optimization")
 
@@ -549,7 +594,7 @@ elif nav_choice == "Investment Optimization":
 
         st.altair_chart(base_line + current_marker, use_container_width=True)
 
-elif nav_choice == "Explainability":
+with tab_xai:
     # Pre-compute budget & selected for explanations
     _exp_budget = 1_00_00_000
     _exp_selected = optimize_budget(df, _exp_budget)

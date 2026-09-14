@@ -14,7 +14,7 @@ import streamlit as st
 
 from generate_data import generate_dataset
 from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets, format_inr, format_inr_short
-from ml_layer import train_likelihood_model
+from ml_layer import train_likelihood_model, explain_asset
 from optimizer import build_remediation_options, optimize_budget, risk_reduction_curve, explain_budget_allocation
 from data_ingestion import ingest_user_data
 
@@ -331,6 +331,30 @@ st.divider()
 st.subheader("🔥 Top 5 Riskiest Assets")
 st.dataframe(top_risky_assets(df), use_container_width=True, hide_index=True)
 
+# --- SHAP "Why this score?" expanders for each of the top 5 ---
+_top5 = df.nlargest(5, "expected_annual_loss_inr")
+_shap_features = df[["vulnerability_count", "criticality_weight", "asset_type"]].copy()
+_shap_features = pd.get_dummies(_shap_features, columns=["asset_type"], drop_first=True)
+for _, _row in _top5.iterrows():
+    _asset_idx = _row.name          # original DataFrame index
+    with st.expander(f"🔎 Why this score? — {_row['asset_name']}"):
+        _explanation = explain_asset(model, _shap_features, _asset_idx)
+        st.markdown(_explanation)
+
+st.divider()
+
+# =====================================================================
+# RISK BY BUSINESS UNIT (asset_type as proxy)
+# =====================================================================
+st.subheader("🏢 Risk by Business Unit")
+st.caption(
+    "Since real business-unit tagging wasn't available in this dataset, asset type is used as a "
+    "proxy grouping to demonstrate the platform's ability to break down risk below the organization level."
+)
+_bu_risk = df.groupby("asset_type")["expected_annual_loss_inr"].sum().sort_values(ascending=True)
+_bu_risk.index.name = "Business Unit (Asset Type)"
+st.bar_chart(_bu_risk, horizontal=True)
+
 st.divider()
 
 # =====================================================================
@@ -550,7 +574,7 @@ with xai_tab4:
 
 | Property | Value |
 |---|---|
-| **Algorithm** | RandomForest Regressor (200 trees) |
+| **Algorithm** | RandomForest Regressor (500 trees) |
 | **Target Variable** | `likelihood` (probability of attack, 0-1) |
 | **Features Used** | `vulnerability_count`, `criticality_weight`, `asset_type` (one-hot encoded) |
 | **Train/Test Split** | 75% / 25% |

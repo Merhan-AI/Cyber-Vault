@@ -17,6 +17,7 @@ from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets,
 from ml_layer import train_likelihood_model
 from optimizer import build_remediation_options, optimize_budget, risk_reduction_curve, explain_budget_allocation
 from data_ingestion import ingest_user_data
+from ai_config import ask_ai, get_status, is_ai_configured
 
 st.set_page_config(page_title="Cyber Risk Quantification Platform", layout="wide")
 
@@ -81,14 +82,20 @@ if data_source == "Upload Your Own Data":
 else:
     df = load_data()
 
-# --- AI Chatbot config in sidebar ---
+# --- AI Chatbot status in sidebar (config lives in .env) ---
 st.sidebar.divider()
-st.sidebar.header("🤖 AI Chatbot Settings")
-gemini_api_key = st.sidebar.text_input(
-    "Google Gemini API Key",
-    type="password",
-    help="Enter your Google Gemini API key for AI-powered Q&A. Get one free at https://aistudio.google.com/apikey",
-)
+st.sidebar.header("🤖 AI Chatbot")
+_ai_status = get_status()
+if _ai_status["configured"]:
+    st.sidebar.success(
+        f"✅ **{_ai_status['provider'].capitalize()}** ({_ai_status['model']})\n\n"
+        f"Key: `{_ai_status['key_preview']}`"
+    )
+else:
+    st.sidebar.warning(
+        f"⚠️ No API key set.\n\nEdit `.env` and set "
+        f"`{_ai_status['provider'].upper()}_API_KEY` to enable AI answers."
+    )
 
 total_risk = total_enterprise_risk(df)
 
@@ -185,31 +192,17 @@ Top Remediation Recommendations:
     return context
 
 
-def get_gemini_response(question, context, api_key):
-    """Call Google Gemini API with the data context."""
-    try:
-        from google import genai
+def get_answer(question, df, budget, selected, reduced, total_risk, model_importance, model_mae):
+    """Return an answer: use configured AI provider if key is set, otherwise keyword fallback."""
+    ai_ready = is_ai_configured()
 
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f"{context}\n\n=== USER QUESTION ===\n{question}",
-        )
-        return response.text
-    except Exception as e:
-        return f"⚠️ AI model error: {str(e)}\n\nFalling back to basic mode."
-
-
-def get_answer(question, df, budget, selected, reduced, total_risk, model_importance, model_mae, api_key=None):
-    """Return an answer: use Gemini if API key available, otherwise keyword fallback."""
-
-    # Try Gemini first
-    if api_key:
+    # Try AI first
+    if ai_ready:
         context = build_data_context(df, budget, selected, reduced, total_risk, model_importance, model_mae)
-        response = get_gemini_response(question, context, api_key)
-        if not response.startswith("⚠️ AI model error"):
+        response = ask_ai(question, context)
+        if not response.startswith("⚠️"):
             return response
-        # Fall through to keyword matching if Gemini fails
+        # Fall through to keyword matching on error
 
     # Keyword fallback
     q = question.lower()
@@ -243,12 +236,14 @@ def get_answer(question, df, budget, selected, reduced, total_risk, model_import
         return ("Check the **Investment Optimization** section below to see "
                 "budget recommendations and risk reduction analysis.")
     else:
-        if api_key:
+        if ai_ready:
             return "I couldn't generate a response. Please try rephrasing your question."
-        return ("💡 **Tip:** Enter a Google Gemini API key in the sidebar for AI-powered answers "
-                "to any question about your data.\n\n"
-                "Without an API key, I can answer: *'What's our highest risk?'*, "
-                "*'What's our total exposure?'*, *'Budget recommendation?'*")
+        return (
+            "💡 **Tip:** Configure an AI provider in `.env` for intelligent answers "
+            "to any question about your data.\n\n"
+            "Without an API key, I can answer: *'What's our highest risk?'*, "
+            "*'What's our total exposure?'*, *'Budget recommendation?'*"
+        )
 
 
 # Initialize chat history
@@ -266,10 +261,10 @@ model, importance, mae = train_likelihood_model(df)
 with st.container(border=True):
     st.subheader("💬 Ask the Platform")
 
-    if gemini_api_key:
-        st.caption("🟢 AI-powered mode (Gemini)")
+    if _ai_status["configured"]:
+        st.caption(f"🟢 AI-powered mode ({_ai_status['provider'].capitalize()} / {_ai_status['model']})")
     else:
-        st.caption("🔵 Basic mode — add a Gemini API key in the sidebar for AI answers")
+        st.caption("🔵 Basic mode — configure AI_PROVIDER + API key in `.env` for AI answers")
 
     st.markdown(
         "<style>div[data-testid='stChatInput'] {margin-top: 0;} "
@@ -287,19 +282,19 @@ with st.container(border=True):
         q = "What's our highest risk?"
         st.session_state.chat_history.append({"role": "user", "content": q})
         st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
-            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
+            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae
         )})
     if eq2.button("What's our total exposure?", use_container_width=True):
         q = "What's our total exposure?"
         st.session_state.chat_history.append({"role": "user", "content": q})
         st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
-            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
+            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae
         )})
     if eq3.button("Budget recommendation?", use_container_width=True):
         q = "Budget recommendation?"
         st.session_state.chat_history.append({"role": "user", "content": q})
         st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
-            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
+            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae
         )})
 
     for msg in st.session_state.chat_history:
@@ -309,9 +304,10 @@ with st.container(border=True):
     if prompt := st.chat_input(placeholder="Ask anything about your cyber risk..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
-            prompt, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
+            prompt, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae
         )})
         st.rerun()
+
 
 st.divider()
 

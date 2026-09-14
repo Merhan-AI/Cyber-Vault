@@ -13,7 +13,7 @@ import numpy as np
 import streamlit as st
 
 from generate_data import generate_dataset
-from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets, format_inr, format_inr_short
+from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets, format_inr, format_inr_short, calculate_var, format_var_summary
 from ml_layer import train_likelihood_model, explain_asset
 from optimizer import build_remediation_options, optimize_budget, risk_reduction_curve, explain_budget_allocation
 from data_ingestion import ingest_user_data
@@ -318,10 +318,13 @@ st.divider()
 # =====================================================================
 # TOP SUMMARY METRICS
 # =====================================================================
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Enterprise Risk (Expected Annual Loss)", format_inr_short(total_risk))
-col2.metric("Assets Monitored", len(df))
-col3.metric("High-Criticality Assets", int((df["criticality_weight"] > 0.7).sum()))
+_var_95 = calculate_var(df)
+col2.metric("Value at Risk (95%)", format_inr_short(_var_95))
+col3.metric("Assets Monitored", len(df))
+col4.metric("High-Criticality Assets", int((df["criticality_weight"] > 0.7).sum()))
+st.info(format_var_summary(_var_95, total_risk))
 
 st.divider()
 

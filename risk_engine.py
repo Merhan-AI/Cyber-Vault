@@ -11,6 +11,7 @@ figure that business leaders can act on.
 """
 
 import pandas as pd
+import numpy as np
 
 
 def calculate_risk(df: pd.DataFrame) -> pd.DataFrame:
@@ -65,6 +66,42 @@ def format_inr_short(amount: float) -> str:
         return format_inr(amount)
 
 
+def calculate_var(df: pd.DataFrame, confidence: float = 0.95, n_trials: int = 5000) -> float:
+    """
+    Compute the Value at Risk (VaR) for the asset portfolio using Monte Carlo
+    simulation.
+
+    For each trial, every asset either "breaches" (with probability = its
+    likelihood, contributing impact × criticality) or doesn't (contributing 0).
+    The VaR is the loss value at the chosen confidence percentile across all
+    trials — i.e. there is only a (1 - confidence) chance that the real loss
+    in a given year exceeds this number.
+    """
+    rng = np.random.default_rng(42)
+
+    likelihoods = df["likelihood"].values
+    losses = (df["potential_financial_impact_inr"] * df["criticality_weight"]).values
+
+    # Monte Carlo: each row of `coin` is one trial, each column is one asset
+    coin = rng.random((n_trials, len(df)))          # uniform [0, 1)
+    breached = coin < likelihoods                   # True where the asset is hit
+    trial_totals = (breached * losses).sum(axis=1)  # total loss per trial
+
+    return float(np.percentile(trial_totals, confidence * 100))
+
+
+def format_var_summary(var_95: float, eal_total: float) -> str:
+    """
+    Return a plain-English sentence comparing the expected annual loss with
+    the 95th-percentile Value at Risk.
+    """
+    return (
+        f"While the expected annual loss is {format_inr_short(eal_total)}, "
+        f"there is a 5% chance losses could exceed {format_inr_short(var_95)} "
+        f"in a bad year."
+    )
+
+
 if __name__ == "__main__":
     df = pd.read_csv("data/assets.csv")
     df = calculate_risk(df)
@@ -74,6 +111,10 @@ if __name__ == "__main__":
 
     print("Top 5 Riskiest Assets:")
     print(top_risky_assets(df).to_string(index=False))
+
+    var_95 = calculate_var(df)
+    print(f"\nValue at Risk (95th percentile): {format_inr(var_95)}")
+    print(format_var_summary(var_95, total))
 
     df.to_csv("data/assets_with_risk.csv", index=False)
     print("\nSaved -> data/assets_with_risk.csv")

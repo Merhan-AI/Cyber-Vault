@@ -14,6 +14,10 @@ import io
 import pandas as pd
 import numpy as np
 
+# Security constraints
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".json", ".txt"}
+
 
 # ---------------------------------------------------------------------------
 # Column alias mapping: maps common real-world column names to the 8
@@ -107,21 +111,43 @@ REQUIRED_COLUMNS = [
 def parse_uploaded_file(uploaded_file) -> pd.DataFrame:
     """
     Accept a Streamlit UploadedFile object. Detect file type and parse
-    into a raw DataFrame.
+    into a raw DataFrame with strict security checks:
+    - Enforces 10MB maximum file size limit
+    - Validates file extensions against a strict allowlist
+    - Uses safe engine for Excel (openpyxl with data_only=True, no macro execution)
+    - Wraps parsing in defensive exception handling to prevent crashes/stack leakage
 
     Supported: CSV, XLSX, XLS, JSON, TXT (tab/comma delimited).
     """
     import csv
-    filename = uploaded_file.name.lower()
+    import os
+
+    filename = getattr(uploaded_file, "name", "uploaded_file").lower()
+
+    # 1. File size check (10MB limit)
+    size = getattr(uploaded_file, "size", None)
+    if size is not None and size > MAX_FILE_SIZE_BYTES:
+        raise ValueError(
+            f"File size exceeds the 10MB limit ({size / (1024 * 1024):.2f}MB). "
+            "Please upload a smaller dataset."
+        )
+
+    # 2. Strict file extension validation
+    _, ext = os.path.splitext(filename)
+    if ext not in ALLOWED_EXTENSIONS:
+        allowed_list = ", ".join(sorted(ALLOWED_EXTENSIONS))
+        raise ValueError(
+            f"File type '{ext or 'unknown'}' is not allowed. "
+            f"Allowed file types: {allowed_list}."
+        )
 
     if filename.endswith(".csv"):
-        uploaded_file.seek(0)
-        sample = uploaded_file.read(4096)
-        if isinstance(sample, bytes):
-            sample = sample.decode('utf-8-sig', errors='replace')
-        uploaded_file.seek(0)
-        
         try:
+            uploaded_file.seek(0)
+            sample = uploaded_file.read(4096)
+            if isinstance(sample, bytes):
+                sample = sample.decode('utf-8-sig', errors='replace')
+            uploaded_file.seek(0)
             sep = csv.Sniffer().sniff(sample).delimiter
         except Exception:
             sep = ","
@@ -132,12 +158,19 @@ def parse_uploaded_file(uploaded_file) -> pd.DataFrame:
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, sep=sep, encoding="latin-1")
     elif filename.endswith((".xlsx", ".xls")):
-        # Read all bytes into a BytesIO buffer for full file-like compatibility
-        uploaded_file.seek(0)
-        buf = io.BytesIO(uploaded_file.read())
-        df = pd.read_excel(buf, engine="openpyxl")
+        # 3. Explicitly safe engine, data_only=True disables formula execution/macros
+        try:
+            uploaded_file.seek(0)
+            buf = io.BytesIO(uploaded_file.read())
+            df = pd.read_excel(buf, engine="openpyxl", data_only=True)
+        except Exception as e:
+            raise ValueError(f"Unable to safely read Excel file: {e}")
     elif filename.endswith(".json"):
-        df = pd.read_json(uploaded_file)
+        try:
+            uploaded_file.seek(0)
+            df = pd.read_json(uploaded_file)
+        except Exception as e:
+            raise ValueError(f"Invalid JSON format: {e}")
     elif filename.endswith(".txt"):
         # Try comma-separated first, then tab-separated
         try:
@@ -150,16 +183,7 @@ def parse_uploaded_file(uploaded_file) -> pd.DataFrame:
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, sep="\t")
     else:
-        # Fallback: try CSV parsing
-        try:
-            uploaded_file.seek(0)
-            df = pd.read_csv(uploaded_file)
-        except Exception as e:
-            raise ValueError(
-                f"Unsupported file format: '{filename}'. "
-                f"Please upload a CSV, Excel (.xlsx/.xls), JSON, or TXT file. "
-                f"Error: {e}"
-            )
+        raise ValueError(f"Unsupported file format: '{filename}'")
 
     # Drop completely empty rows/columns
     df = df.dropna(how="all").dropna(axis=1, how="all")
@@ -401,6 +425,18 @@ def validate_data(df: pd.DataFrame) -> tuple[bool, list[str]]:
     # Check: at least 1 row
     if df is None or len(df) == 0:
         return False, ["❌ The uploaded file contains no data rows."]
+
+    # Post-parsing type validation: ensure required numeric columns contain numbers
+    numeric_cols = [
+        "vulnerability_count", "likelihood_pct", "likelihood",
+        "potential_financial_impact_inr", "criticality_weight"
+    ]
+    for col in numeric_cols:
+        if col in df.columns:
+            non_numeric = pd.to_numeric(df[col], errors="coerce").isna().sum()
+            if non_numeric > 0:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+                messages.append(f"⚠️ Cleaned {non_numeric} non-numeric/injected value(s) in '{col}'")
 
     # 13. Drop exact duplicate rows and warn about them
     dup_count = df.duplicated().sum()

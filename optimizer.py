@@ -6,7 +6,10 @@ Investment Optimization Module for SIH26105.
 Given a fixed security budget, recommends which assets to remediate
 first to maximize total risk reduction (a knapsack-style problem,
 solved here with a simple, explainable greedy algorithm ranked by
-"risk reduction per rupee spent").
+"risk reduction per rupee spent", also known as ROSI).
+
+ROSI = (Risk Reduction) / (Investment Cost), a standard metric used to
+justify security spending to executives and boards.
 """
 
 import pandas as pd
@@ -34,6 +37,8 @@ def build_remediation_options(df: pd.DataFrame) -> pd.DataFrame:
     df["risk_reduction_inr"] = (df["expected_annual_loss_inr"] * reduction_fraction).round(0)
 
     df["reduction_per_rupee"] = df["risk_reduction_inr"] / df["remediation_cost_inr"].replace(0, 1)
+    # Expose the same metric under the industry-standard label "ROSI"
+    df["rosi"] = df["reduction_per_rupee"]
     return df
 
 
@@ -67,23 +72,23 @@ def explain_asset_choice(row: pd.Series, rank: int = 1) -> str:
         ratio = reduction / cost
 
     try:
-        from risk_engine import format_inr
-        cost_str = format_inr(cost)
-        red_str = format_inr(reduction)
+        from risk_engine import format_inr_short
+        cost_str = format_inr_short(cost)
+        red_str = format_inr_short(reduction)
     except ImportError:
         cost_str = f"₹{int(round(cost)):,}"
         red_str = f"₹{int(round(reduction)):,}"
 
     if rank == 1:
         return (
-            f"'{name}' was prioritized #1 because it offers the highest risk reduction per rupee spent "
+            f"'{name}' was prioritized #1 because it has the highest ROSI (Return on Security Investment) "
             f"across all assets. Remediating it costs {cost_str} and eliminates {red_str} in expected annual loss, "
-            f"yielding the top return of ₹{ratio:.2f} of risk mitigated for every ₹1 invested."
+            f"yielding a ROSI of {ratio:.2f} (₹{ratio:.2f} of risk mitigated for every ₹1 invested)."
         )
     else:
         return (
-            f"'{name}' was prioritized #{rank} because it offers high risk reduction per rupee spent "
-            f"(₹{ratio:.2f} risk reduced per ₹1 spent), eliminating {red_str} in expected annual loss for a "
+            f"'{name}' was prioritized #{rank} because of its strong ROSI (Return on Security Investment) "
+            f"of {ratio:.2f}, eliminating {red_str} in expected annual loss for a "
             f"remediation cost of {cost_str}."
         )
 
@@ -108,7 +113,7 @@ def explain_budget_allocation(
         list[str] or str: Plain-English explanation(s).
     """
     try:
-        from risk_engine import format_inr
+        from risk_engine import format_inr_short as format_inr
     except ImportError:
         def format_inr(amount: float) -> str:
             return f"₹{int(round(amount)):,}"
@@ -139,7 +144,7 @@ def explain_budget_allocation(
 
         header = [
             "=== Security Budget Allocation Rationale ===",
-            "Allocation Strategy: Greedy Knapsack Optimization (maximizing risk reduction per rupee spent).",
+            "Allocation Strategy: Greedy Knapsack Optimization (maximizing ROSI — Return on Security Investment).",
             f"Summary: With a total budget{budget_str}, {len(selected)} asset(s) were selected for remediation.",
             f"Total Investment: {format_inr(total_cost)}" + (f" (Remaining Unallocated: {format_inr(remaining)})" if budget is not None else ""),
             f"Total Risk Reduced: {format_inr(total_reduction)} in Expected Annual Loss.",
@@ -170,7 +175,7 @@ def risk_reduction_curve(df: pd.DataFrame, max_budget: float, steps: int = 20) -
 
 
 if __name__ == "__main__":
-    from risk_engine import calculate_risk, format_inr
+    from risk_engine import calculate_risk, format_inr_short
 
     df = pd.read_csv("data/assets.csv")
     df = calculate_risk(df)
@@ -179,9 +184,9 @@ if __name__ == "__main__":
     budget = 1_00_00_000  # ₹1 crore
     selected = optimize_budget(df, budget)
 
-    print(f"Budget: {format_inr(budget)}")
+    print(f"Budget: {format_inr_short(budget)}")
     print(f"Assets remediated: {len(selected)}")
-    print(f"Total risk reduced: {format_inr(selected['risk_reduction_inr'].sum())}\n")
+    print(f"Total risk reduced: {format_inr_short(selected['risk_reduction_inr'].sum())}\n")
     print(selected[["asset_name", "remediation_cost_inr", "risk_reduction_inr"]].to_string(index=False))
 
     print("\n" + "=" * 60)

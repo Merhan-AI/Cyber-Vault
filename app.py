@@ -11,6 +11,7 @@ import os
 import pandas as pd
 import numpy as np
 import streamlit as st
+import altair as alt
 
 from generate_data import generate_dataset
 from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets, format_inr, format_inr_short, calculate_var, format_var_summary
@@ -37,79 +38,42 @@ def load_data():
 
 
 # =====================================================================
-# SIDEBAR — Data Source + AI Config
+# SIDEBAR — Navigation Menu
 # =====================================================================
-st.sidebar.header("📁 Data Source")
-data_source = st.sidebar.radio(
-    "Choose data source:",
-    ["Demo Data (Synthetic)", "Upload Your Own Data"],
+st.sidebar.header("Navigation")
+nav_choice = st.sidebar.radio(
+    "Go to",
+    [
+        "Upload Your Company's Data",
+        "Overview",
+        "Ask the Platform",
+        "Risk Analysis",
+        "Investment Optimization",
+        "Explainability",
+    ],
     index=0,
 )
 
-if data_source == "Upload Your Own Data":
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload your asset/vulnerability data",
-        type=["csv", "xlsx", "xls", "json", "txt"],
-        help="Upload a CSV, Excel, JSON, or text file containing your asset inventory, "
-             "vulnerability scan results, or any cyber risk data. The platform will "
-             "automatically map your columns and fill in any missing fields."
-    )
-    if uploaded_file is not None:
-        df, messages = ingest_user_data(uploaded_file)
-        for msg in messages:
-            if msg.startswith("❌"):
-                st.sidebar.error(msg)
-            elif msg.startswith("⚠️"):
-                st.sidebar.warning(msg)
-            elif msg.startswith("✅"):
-                st.sidebar.success(msg)
-            else:
-                st.sidebar.info(msg)
+if "gemini_api_key" not in st.session_state:
+    st.session_state.gemini_api_key = ""
+if "custom_df" not in st.session_state:
+    st.session_state.custom_df = None
+if "data_source" not in st.session_state:
+    st.session_state.data_source = "Demo Data (Synthetic)"
 
-        if len(df) == 0:
-            st.error("Could not process the uploaded file. Please check the messages in the sidebar.")
-            st.stop()
-
-        with st.sidebar.expander("Preview processed data"):
-            st.dataframe(df.head(10))
-
-        df = calculate_risk(df)
-        df = build_remediation_options(df)
-    else:
-        st.sidebar.warning("Please upload a file to continue, or switch to Demo Data.")
-        st.stop()
+if st.session_state.custom_df is not None:
+    df = st.session_state.custom_df
 else:
     df = load_data()
 
-# --- AI Chatbot config in sidebar ---
-st.sidebar.divider()
-st.sidebar.header("🤖 AI Chatbot Settings")
-gemini_api_key = st.sidebar.text_input(
-    "Google Gemini API Key",
-    type="password",
-    help="Enter your Google Gemini API key for AI-powered Q&A. Get one free at https://aistudio.google.com/apikey",
-)
-
+gemini_api_key = st.session_state.gemini_api_key
 total_risk = total_enterprise_risk(df)
 
 # =====================================================================
 # HEADER
 # =====================================================================
-st.title("AI-Powered Cyber Risk Quantification Platform")
-st.caption("SIH26105 — Prototype | Converting technical cyber risk into financial exposure (₹)")
-
-# --- Traditional vs Our Approach ---
-comp_col1, comp_col2 = st.columns(2)
-comp_col1.error(
-    "**Traditional Approach**  \n"
-    "**Risk Level:** Medium  \n"
-    "*No financial context, hard to act on*"
-)
-comp_col2.success(
-    f"**Our Approach**  \n"
-    f"**Expected Annual Loss:** {format_inr_short(total_risk)}  \n"
-    "*Clear, actionable, business-ready*"
-)
+st.title("Cyber Risk Quantification Platform")
+st.caption("SIH26105 Prototype | Converting technical cyber risk into financial exposure (₹)")
 
 
 # =====================================================================
@@ -245,7 +209,7 @@ def get_answer(question, df, budget, selected, reduced, total_risk, model_import
     else:
         if api_key:
             return "I couldn't generate a response. Please try rephrasing your question."
-        return ("💡 **Tip:** Enter a Google Gemini API key in the sidebar for AI-powered answers "
+        return ("**Tip:** Enter a Google Gemini API key in the sidebar for AI-powered answers "
                 "to any question about your data.\n\n"
                 "Without an API key, I can answer: *'What's our highest risk?'*, "
                 "*'What's our total exposure?'*, *'Budget recommendation?'*")
@@ -263,243 +227,375 @@ _default_budget = 1_00_00_000
 # Train ML model (cached)
 model, importance, mae = train_likelihood_model(df)
 
-with st.container(border=True):
-    st.subheader("💬 Ask the Platform")
-
-    if gemini_api_key:
-        st.caption("🟢 AI-powered mode (Gemini)")
-    else:
-        st.caption("🔵 Basic mode — add a Gemini API key in the sidebar for AI answers")
-
-    st.markdown(
-        "<style>div[data-testid='stChatInput'] {margin-top: 0;} "
-        ".stColumns + div[data-testid='stChatMessage'] {margin-top: -0.5rem;}</style>",
-        unsafe_allow_html=True,
-    )
-
-    eq1, eq2, eq3 = st.columns(3, gap="small")
-
-    # Pre-compute default optimization for chatbot context
-    _sel_default = optimize_budget(df, _default_budget)
-    _red_default = _sel_default["risk_reduction_inr"].sum() if len(_sel_default) else 0
-
-    if eq1.button("What's our highest risk?", use_container_width=True):
-        q = "What's our highest risk?"
-        st.session_state.chat_history.append({"role": "user", "content": q})
-        st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
-            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
-        )})
-    if eq2.button("What's our total exposure?", use_container_width=True):
-        q = "What's our total exposure?"
-        st.session_state.chat_history.append({"role": "user", "content": q})
-        st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
-            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
-        )})
-    if eq3.button("Budget recommendation?", use_container_width=True):
-        q = "Budget recommendation?"
-        st.session_state.chat_history.append({"role": "user", "content": q})
-        st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
-            q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
-        )})
-
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    if prompt := st.chat_input(placeholder="Ask anything about your cyber risk..."):
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
-        st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
-            prompt, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
-        )})
-        st.rerun()
-
-st.divider()
-
 # =====================================================================
-# TOP SUMMARY METRICS
+# SECTIONS (Routed by Sidebar Navigation)
 # =====================================================================
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Enterprise Risk (Expected Annual Loss)", format_inr_short(total_risk))
-_var_95 = calculate_var(df)
-col2.metric("Value at Risk (95%)", format_inr_short(_var_95))
-col3.metric("Assets Monitored", len(df))
-col4.metric("High-Criticality Assets", int((df["criticality_weight"] > 0.7).sum()))
-st.info(format_var_summary(_var_95, total_risk))
 
-st.divider()
+if nav_choice == "Upload Your Company's Data":
+    with st.container(border=True):
+        st.subheader("Upload Your Company's Data")
+        st.write(
+            "Welcome to the **Cyber Risk Quantification Platform** (SIH26105). "
+            "Our system ingests your technical vulnerability scans, asset inventories, "
+            "and business context to translate cyber risk into actuarial financial exposure (₹)."
+        )
 
-# =====================================================================
-# TOP RISKY ASSETS
-# =====================================================================
-st.subheader("🔥 Top 5 Riskiest Assets")
-st.dataframe(top_risky_assets(df), use_container_width=True, hide_index=True)
+        data_source = st.radio(
+            "Choose data source:",
+            ["Demo Data (Synthetic)", "Upload Your Own Data"],
+            index=0 if st.session_state.data_source == "Demo Data (Synthetic)" else 1,
+        )
+        st.session_state.data_source = data_source
 
-# --- SHAP "Why this score?" expanders for each of the top 5 ---
-_top5 = df.nlargest(5, "expected_annual_loss_inr")
-_shap_features = df[["vulnerability_count", "criticality_weight", "asset_type"]].copy()
-_shap_features = pd.get_dummies(_shap_features, columns=["asset_type"], drop_first=True)
-for _, _row in _top5.iterrows():
-    _asset_idx = _row.name          # original DataFrame index
-    with st.expander(f"🔎 Why this score? — {_row['asset_name']}"):
-        _explanation = explain_asset(model, _shap_features, _asset_idx)
-        st.markdown(_explanation)
+        if data_source == "Upload Your Own Data":
+            uploaded_file = st.file_uploader(
+                "Upload your asset/vulnerability data",
+                type=["csv", "xlsx", "xls", "json", "txt"],
+                help="Upload a CSV, Excel, JSON, or text file containing your asset inventory, "
+                     "vulnerability scan results, or any cyber risk data. The platform will "
+                     "automatically map your columns and fill in any missing fields."
+            )
+            if uploaded_file is not None:
+                parsed_df, messages = ingest_user_data(uploaded_file)
+                for msg in messages:
+                    if msg.startswith("❌"):
+                        st.error(msg)
+                    elif msg.startswith("⚠️"):
+                        st.warning(msg)
+                    elif msg.startswith("✅"):
+                        st.success(msg)
+                    else:
+                        st.info(msg)
 
-st.divider()
+                if len(parsed_df) == 0:
+                    st.error("Could not process the uploaded file. Please check the messages above.")
+                else:
+                    parsed_df = calculate_risk(parsed_df)
+                    parsed_df = build_remediation_options(parsed_df)
+                    st.session_state.custom_df = parsed_df
+                    with st.expander("Preview processed data"):
+                        st.dataframe(parsed_df.head(10))
+                    st.success("Data successfully loaded and quantified! Use the sidebar to explore your risk analysis.")
+        else:
+            st.session_state.custom_df = None
+            st.info("Using baseline synthetic demo data. You can explore all platform sections using the sidebar navigation.")
 
-# =====================================================================
-# RISK BY BUSINESS UNIT (asset_type as proxy)
-# =====================================================================
-st.subheader("🏢 Risk by Business Unit")
-st.caption(
-    "Since real business-unit tagging wasn't available in this dataset, asset type is used as a "
-    "proxy grouping to demonstrate the platform's ability to break down risk below the organization level."
-)
-_bu_risk = df.groupby("asset_type")["expected_annual_loss_inr"].sum().sort_values(ascending=True)
-_bu_risk.index.name = "Business Unit (Asset Type)"
-st.bar_chart(_bu_risk, horizontal=True)
+        st.divider()
+        st.subheader("Chatbot Settings")
+        key_input = st.text_input(
+            "Google Gemini API Key",
+            type="password",
+            value=st.session_state.gemini_api_key,
+            help="Enter your Google Gemini API key for AI-powered Q&A. Get one free at https://aistudio.google.com/apikey",
+        )
+        if key_input != st.session_state.gemini_api_key:
+            st.session_state.gemini_api_key = key_input
 
-st.divider()
+elif nav_choice == "Overview":
+    # --- Traditional vs Our Approach ---
+    with st.container(border=True):
+        comp_col1, comp_col2 = st.columns(2)
+        comp_col1.error(
+            "**Traditional Approach**  \n"
+            "**Risk Level:** Medium  \n"
+            "*No financial context, hard to act on*"
+        )
+        comp_col2.success(
+            f"**Our Approach**  \n"
+            f"**Expected Annual Loss:** {format_inr_short(total_risk)}  \n"
+            "*Clear, actionable, business-ready*"
+        )
 
-# =====================================================================
-# CHARTS — Risk Analytics
-# =====================================================================
-st.subheader("📊 Risk Analytics")
+    # --- Top Summary Metrics ---
+    with st.container(border=True):
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Enterprise Risk (Expected Annual Loss)", format_inr_short(total_risk))
+        _var_95 = calculate_var(df)
+        col2.metric("Value at Risk (95%)", format_inr_short(_var_95))
+        col3.metric("Assets Monitored", len(df))
+        col4.metric("High-Criticality Assets", int((df["criticality_weight"] > 0.7).sum()))
+        st.info(format_var_summary(_var_95, total_risk))
 
-chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
-    "Risk Distribution", "By Asset Type", "Vulnerability vs Likelihood", "Risk Composition"
-])
+elif nav_choice == "Ask the Platform":
+    with st.container(border=True):
+        st.subheader("Ask the Platform")
 
-with chart_tab1:
-    # Risk Distribution — horizontal bar chart of all assets by EAL
-    st.write("**Expected Annual Loss by Asset** (sorted highest → lowest)")
-    chart_df = df[["asset_name", "expected_annual_loss_inr"]].copy()
-    chart_df = chart_df.sort_values("expected_annual_loss_inr", ascending=True).tail(20)
-    st.bar_chart(chart_df.set_index("asset_name"), horizontal=True)
+        if gemini_api_key:
+            st.caption("Mode: AI-assisted (Gemini connected)")
+        else:
+            st.caption("Mode: Keyword-based (no API key)")
 
-with chart_tab2:
-    # Risk by Asset Type — grouped bar
-    st.write("**Total Risk Exposure by Asset Type**")
-    type_agg = df.groupby("asset_type").agg(
-        total_eal=("expected_annual_loss_inr", "sum"),
-        count=("asset_id", "count"),
-        avg_likelihood=("likelihood_pct", "mean"),
-    ).sort_values("total_eal", ascending=False).reset_index()
+        st.markdown(
+            "<style>div[data-testid='stChatInput'] {margin-top: 0;} "
+            ".stColumns + div[data-testid='stChatMessage'] {margin-top: -0.5rem;}</style>",
+            unsafe_allow_html=True,
+        )
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.bar_chart(type_agg.set_index("asset_type")["total_eal"])
-    with col_b:
-        st.write("**Breakdown Table**")
-        display_type = type_agg.copy()
-        display_type["total_eal"] = display_type["total_eal"].map(format_inr_short)
-        display_type["avg_likelihood"] = display_type["avg_likelihood"].map(lambda x: f"{x:.1f}%")
-        display_type.columns = ["Asset Type", "Total EAL", "Count", "Avg Likelihood"]
-        st.dataframe(display_type, use_container_width=True, hide_index=True)
+        eq1, eq2, eq3 = st.columns(3, gap="small")
 
-with chart_tab3:
-    # Vulnerability Count vs Likelihood scatter
-    st.write("**Vulnerability Count vs. Attack Likelihood** (bubble size = EAL)")
-    scatter_df = df[["asset_name", "vulnerability_count", "likelihood_pct",
-                     "expected_annual_loss_inr", "criticality_weight"]].copy()
-    st.scatter_chart(
-        scatter_df,
-        x="vulnerability_count",
-        y="likelihood_pct",
-        size="expected_annual_loss_inr",
-        color="criticality_weight",
-    )
+        # Pre-compute default optimization for chatbot context
+        _sel_default = optimize_budget(df, _default_budget)
+        _red_default = _sel_default["risk_reduction_inr"].sum() if len(_sel_default) else 0
 
-with chart_tab4:
-    # Risk Composition — stacked breakdown showing contribution of each factor
-    st.write("**Risk Factor Contribution** (top 10 assets)")
-    top10 = df.nlargest(10, "expected_annual_loss_inr").copy()
-    top10["Likelihood Score"] = top10["likelihood"] * top10["potential_financial_impact_inr"]
-    top10["Criticality Multiplier"] = (
-        top10["expected_annual_loss_inr"] - top10["Likelihood Score"]
-    ).clip(lower=0)
-    composition = top10[["asset_name", "Likelihood Score", "Criticality Multiplier"]].set_index("asset_name")
-    st.bar_chart(composition)
+        if eq1.button("What's our highest risk?", use_container_width=True):
+            q = "What's our highest risk?"
+            st.session_state.chat_history.append({"role": "user", "content": q})
+            st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
+                q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
+            )})
+        if eq2.button("What's our total exposure?", use_container_width=True):
+            q = "What's our total exposure?"
+            st.session_state.chat_history.append({"role": "user", "content": q})
+            st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
+                q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
+            )})
+        if eq3.button("Budget recommendation?", use_container_width=True):
+            q = "Budget recommendation?"
+            st.session_state.chat_history.append({"role": "user", "content": q})
+            st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
+                q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
+            )})
 
-st.divider()
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-# =====================================================================
-# INVESTMENT OPTIMIZATION
-# =====================================================================
-st.subheader("💰 Investment Optimization")
+        if prompt := st.chat_input(placeholder="Ask anything about your cyber risk..."):
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
+                prompt, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae, gemini_api_key
+            )})
+            st.rerun()
 
-slider_col, custom_col = st.columns([3, 1])
-with slider_col:
-    slider_budget = st.select_slider(
-        "Security Budget",
-        options=list(range(0, 2_00_00_001, 5_00_000)),
-        value=1_00_00_000,
-        format_func=format_inr_short,
-    )
-with custom_col:
-    custom_budget = st.number_input(
-        "Add Custom Budget (₹)",
-        min_value=0,
-        max_value=50_00_00_000,
-        value=0,
-        step=1_00_000,
-        help="Enter an exact budget amount. When set above 0, this overrides the slider.",
-    )
+elif nav_choice == "Risk Analysis":
+    # --- Top Risky Assets ---
+    with st.container(border=True):
+        st.subheader("Top 5 Riskiest Assets")
+        _top_display = top_risky_assets(df).rename(columns={
+            "asset_name": "Asset Name",
+            "asset_type": "Asset Type",
+            "expected_annual_loss_inr": "Expected Annual Loss (₹)",
+            "likelihood_pct": "Likelihood (%)",
+            "criticality_weight": "Criticality Weight",
+        })
+        st.dataframe(_top_display, use_container_width=True, hide_index=True)
 
-budget = custom_budget if custom_budget > 0 else slider_budget
+        # --- SHAP "Why this score?" expanders for each of the top 5 ---
+        _top5 = df.nlargest(5, "expected_annual_loss_inr")
+        _shap_features = df[["vulnerability_count", "criticality_weight", "asset_type"]].copy()
+        _shap_features = pd.get_dummies(_shap_features, columns=["asset_type"], drop_first=True)
+        for _, _row in _top5.iterrows():
+            _asset_idx = _row.name          # original DataFrame index
+            with st.expander(f"Why this score? — {_row['asset_name']}"):
+                _explanation = explain_asset(model, _shap_features, _asset_idx)
+                st.markdown(_explanation)
 
-selected = optimize_budget(df, budget)
-reduced = selected["risk_reduction_inr"].sum() if len(selected) else 0
+    # --- Risk by Business Unit ---
+    with st.container(border=True):
+        st.subheader("Risk by Business Unit")
+        st.caption(
+            "Since real business-unit tagging wasn't available in this dataset, asset type is used as a "
+            "proxy grouping to demonstrate the platform's ability to break down risk below the organization level."
+        )
+        _bu_risk = df.groupby("asset_type")["expected_annual_loss_inr"].sum().sort_values(ascending=True)
+        _bu_risk.index.name = "Business Unit (Asset Type)"
+        st.bar_chart(_bu_risk, horizontal=True)
 
-c1, c2 = st.columns(2)
-c1.metric("Recommended Assets to Remediate", len(selected))
-c2.metric("Total Risk Reduced", format_inr_short(reduced))
+    # --- Charts — Risk Analytics ---
+    with st.container(border=True):
+        st.subheader("Risk Analytics")
 
-if len(selected):
-    st.write("Recommended remediation plan for this budget:")
-    display_df = selected[["asset_name", "asset_type", "remediation_cost_inr", "risk_reduction_inr"]].copy()
-    display_df["remediation_cost_inr"] = display_df["remediation_cost_inr"].map(format_inr_short)
-    display_df["risk_reduction_inr"] = display_df["risk_reduction_inr"].map(format_inr_short)
-    st.dataframe(
-        display_df.rename(columns={
-            "asset_name": "Asset",
-            "asset_type": "Type",
-            "remediation_cost_inr": "Cost (₹)",
-            "risk_reduction_inr": "Risk Reduced (₹)",
-        }),
-        use_container_width=True,
-        hide_index=True,
-    )
+        chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
+            "Risk Distribution", "By Asset Type", "Vulnerability vs Likelihood", "Risk Composition"
+        ])
 
-st.write("**Investment vs. Risk Reduction curve** (shows diminishing returns as budget grows)")
-curve = risk_reduction_curve(df, max_budget=2_00_00_000)
-st.line_chart(curve.set_index("budget_inr"))
+        with chart_tab1:
+            st.write("**Expected Annual Loss by Asset** (sorted highest → lowest)")
+            chart_df = df[["asset_name", "expected_annual_loss_inr"]].rename(
+                columns={"asset_name": "Asset", "expected_annual_loss_inr": "Expected Annual Loss (₹)"}
+            ).copy()
+            chart_df = chart_df.sort_values("Expected Annual Loss (₹)", ascending=True).tail(20)
+            st.bar_chart(chart_df.set_index("Asset"), horizontal=True)
 
-st.divider()
+        with chart_tab2:
+            st.write("**Total Risk Exposure by Asset Type**")
+            type_agg = df.groupby("asset_type").agg(
+                total_eal=("expected_annual_loss_inr", "sum"),
+                count=("asset_id", "count"),
+                avg_likelihood=("likelihood_pct", "mean"),
+            ).sort_values("total_eal", ascending=False).reset_index()
 
-# =====================================================================
-# AI RISK DRIVERS (ML Layer)
-# =====================================================================
-st.subheader("🧠 AI Risk Drivers (ML Layer)")
-st.write("Which factors contribute most to attack likelihood, according to the model:")
-st.bar_chart(importance.head(8))
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.bar_chart(type_agg.rename(columns={"asset_type": "Asset Type", "total_eal": "Total EAL (₹)"}).set_index("Asset Type")["Total EAL (₹)"])
+            with col_b:
+                st.write("**Breakdown Table**")
+                display_type = type_agg.copy()
+                display_type["total_eal"] = display_type["total_eal"].map(format_inr_short)
+                display_type["avg_likelihood"] = display_type["avg_likelihood"].map(lambda x: f"{x:.1f}%")
+                display_type.columns = ["Asset Type", "Total EAL", "Count", "Avg Likelihood"]
+                st.dataframe(display_type, use_container_width=True, hide_index=True)
 
-st.divider()
+        with chart_tab3:
+            st.write("**Vulnerability Count vs. Attack Likelihood** (bubble size = EAL)")
+            scatter_df = df[["asset_name", "vulnerability_count", "likelihood_pct",
+                             "expected_annual_loss_inr", "criticality_weight"]].rename(columns={
+                "vulnerability_count": "Vulnerability Count",
+                "likelihood_pct": "Likelihood (%)",
+                "expected_annual_loss_inr": "Expected Annual Loss (₹)",
+                "criticality_weight": "Criticality Weight",
+            }).copy()
+            st.scatter_chart(
+                scatter_df,
+                x="Vulnerability Count",
+                y="Likelihood (%)",
+                size="Expected Annual Loss (₹)",
+                color="Criticality Weight",
+            )
 
-# =====================================================================
-# XAI — EXPLAINABILITY & TRANSPARENCY LOGS
-# =====================================================================
-st.subheader("🔍 XAI — Explainability & Transparency Logs")
-st.write(
-    "This section provides full transparency into **how every number on this dashboard was calculated**. "
-    "Use this to explain the platform's logic to judges, auditors, or leadership."
-)
+        with chart_tab4:
+            st.write("**Risk Factor Contribution** (top 10 assets)")
+            top10 = df.nlargest(10, "expected_annual_loss_inr").copy()
+            top10["Likelihood Score"] = top10["likelihood"] * top10["potential_financial_impact_inr"]
+            top10["Criticality Multiplier"] = (
+                top10["expected_annual_loss_inr"] - top10["Likelihood Score"]
+            ).clip(lower=0)
+            composition = top10.rename(columns={"asset_name": "Asset"})[["Asset", "Likelihood Score", "Criticality Multiplier"]].set_index("Asset")
+            st.bar_chart(composition)
 
-xai_tab1, xai_tab2, xai_tab3, xai_tab4 = st.tabs([
-    "📐 Risk Formula", "📋 Per-Asset Breakdown", "💰 Optimizer Rationale", "🧠 ML Model Card"
-])
+elif nav_choice == "Investment Optimization":
+    with st.container(border=True):
+        st.subheader("Investment Optimization")
 
-with xai_tab1:
-    st.markdown("""
+        slider_col, custom_col = st.columns([3, 1])
+        with slider_col:
+            slider_budget = st.select_slider(
+                "Security Budget",
+                options=list(range(0, 2_00_00_001, 5_00_000)),
+                value=1_00_00_000,
+                format_func=format_inr,
+            )
+        with custom_col:
+            custom_budget = st.number_input(
+                "Add Custom Budget (₹)",
+                min_value=0,
+                max_value=50_00_00_000,
+                value=0,
+                step=1_00_000,
+                help="Enter an exact budget amount. When set above 0, this overrides the slider.",
+            )
+
+        budget = custom_budget if custom_budget > 0 else slider_budget
+
+        selected = optimize_budget(df, budget)
+        reduced = selected["risk_reduction_inr"].sum() if len(selected) else 0
+
+        c1, c2 = st.columns(2)
+        c1.metric("Recommended Assets to Remediate", len(selected))
+        c2.metric("Total Risk Reduced", format_inr_short(reduced))
+
+        if len(selected):
+            st.write("Recommended remediation plan for this budget:")
+            display_df = selected[["asset_name", "asset_type", "remediation_cost_inr", "risk_reduction_inr"]].copy()
+            display_df["remediation_cost_inr"] = display_df["remediation_cost_inr"].map(format_inr_short)
+            display_df["risk_reduction_inr"] = display_df["risk_reduction_inr"].map(format_inr_short)
+            st.dataframe(
+                display_df.rename(columns={
+                    "asset_name": "Asset",
+                    "asset_type": "Type",
+                    "remediation_cost_inr": "Cost (₹)",
+                    "risk_reduction_inr": "Risk Reduced (₹)",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        st.markdown("**Investment vs. Risk Reduction Curve**")
+        st.caption("Shows diminishing returns as budget grows. The marker highlights your currently selected budget.")
+
+        curve = risk_reduction_curve(df, max_budget=2_00_00_000)
+        curve["budget_fmt"] = curve["budget_inr"].map(format_inr_short)
+        curve["reduction_fmt"] = curve["risk_reduction_inr"].map(format_inr_short)
+
+        tick_expr = (
+            "datum.value >= 10000000 ? '₹' + round(datum.value / 10000000 * 10) / 10 + 'Cr' : "
+            "(datum.value >= 100000 ? '₹' + round(datum.value / 100000 * 10) / 10 + 'L' : '₹' + datum.value)"
+        )
+
+        base_line = alt.Chart(curve).mark_line(color="#1f77b4", strokeWidth=3).encode(
+            x=alt.X(
+                "budget_inr:Q",
+                title="Security Budget (₹)",
+                axis=alt.Axis(labelExpr=tick_expr),
+            ),
+            y=alt.Y(
+                "risk_reduction_inr:Q",
+                title="Total Risk Reduced (₹)",
+                axis=alt.Axis(labelExpr=tick_expr),
+            ),
+            tooltip=[
+                alt.Tooltip("budget_fmt:N", title="Budget"),
+                alt.Tooltip("reduction_fmt:N", title="Risk Reduced"),
+            ],
+        )
+
+        current_pt_df = pd.DataFrame([{
+            "budget_inr": float(budget),
+            "risk_reduction_inr": float(reduced),
+            "budget_fmt": format_inr_short(budget),
+            "reduction_fmt": format_inr_short(reduced),
+        }])
+
+        current_marker = alt.Chart(current_pt_df).mark_circle(size=140, color="#d62728").encode(
+            x="budget_inr:Q",
+            y="risk_reduction_inr:Q",
+            tooltip=[
+                alt.Tooltip("budget_fmt:N", title="Selected Budget"),
+                alt.Tooltip("reduction_fmt:N", title="Total Risk Reduced"),
+            ],
+        )
+
+        st.altair_chart(base_line + current_marker, use_container_width=True)
+
+elif nav_choice == "Explainability":
+    # Pre-compute budget & selected for explanations
+    _exp_budget = 1_00_00_000
+    _exp_selected = optimize_budget(df, _exp_budget)
+    _exp_reduced = _exp_selected["risk_reduction_inr"].sum() if len(_exp_selected) else 0
+
+    with st.container(border=True):
+        st.subheader("Explainability & Transparency Logs")
+        st.write(
+            "This section provides full transparency into **how every number on this dashboard was calculated**. "
+            "Use this to explain the platform's logic to judges, auditors, or leadership."
+        )
+
+        xai_tab1, xai_tab2, xai_tab3, xai_tab4, xai_tab5 = st.tabs([
+            "Risk Drivers", "Risk Formula", "Per-Asset Breakdown", "Optimizer Rationale", "ML Model Card"
+        ])
+
+        with xai_tab1:
+            st.write("Which factors contribute most to attack likelihood, according to the model:")
+            vuln_imp = float(importance.get("vulnerability_count", 0.0))
+            crit_imp = float(importance.get("criticality_weight", 0.0))
+            asset_type_imp = float(importance[importance.index.str.startswith("asset_type_")].sum())
+
+            grouped_drivers = pd.DataFrame([
+                {"Risk Factor": "Vulnerability Count", "Relative Importance": vuln_imp},
+                {"Risk Factor": "Criticality Weight", "Relative Importance": crit_imp},
+                {"Risk Factor": "Asset Type", "Relative Importance": asset_type_imp},
+            ]).sort_values("Relative Importance", ascending=False)
+            grouped_drivers["Importance Pct"] = (grouped_drivers["Relative Importance"] * 100).round(2).astype(str) + "%"
+
+            drivers_chart = alt.Chart(grouped_drivers).mark_bar(color="#1f77b4").encode(
+                x=alt.X("Risk Factor:N", title="Risk Factor", sort=alt.SortField("Relative Importance", order="descending")),
+                y=alt.Y("Relative Importance:Q", title="Relative Importance"),
+                tooltip=[alt.Tooltip("Risk Factor:N"), alt.Tooltip("Importance Pct:N", title="Relative Importance")],
+            ).properties(height=350)
+            st.altair_chart(drivers_chart, use_container_width=True)
+
+        with xai_tab2:
+            st.markdown("""
 ### Risk Quantification Formula (FAIR-Aligned)
 
 ```
@@ -518,38 +614,38 @@ produces a single rupee figure that leadership can compare across assets and use
 
 **Total Enterprise Risk** is simply the sum of all individual asset EALs:
 """)
-    st.code(f"Total Enterprise Risk = Σ(EAL) = {format_inr(total_risk)}", language="text")
+            st.code(f"Total Enterprise Risk = Σ(EAL) = {format_inr(total_risk)}", language="text")
 
-with xai_tab2:
-    st.write("**Step-by-step EAL calculation for every asset:**")
-    breakdown = df[["asset_name", "asset_type", "likelihood", "likelihood_pct",
-                     "potential_financial_impact_inr", "criticality_weight",
-                     "expected_annual_loss_inr"]].copy()
-    breakdown["calculation"] = breakdown.apply(
-        lambda r: (
-            f"{r['likelihood']:.4f} × {format_inr_short(r['potential_financial_impact_inr'])} "
-            f"× {r['criticality_weight']:.2f} = {format_inr_short(r['expected_annual_loss_inr'])}"
-        ), axis=1
-    )
-    st.dataframe(
-        breakdown[["asset_name", "asset_type", "likelihood_pct",
-                    "potential_financial_impact_inr", "criticality_weight",
-                    "expected_annual_loss_inr", "calculation"]]
-        .rename(columns={
-            "asset_name": "Asset",
-            "asset_type": "Type",
-            "likelihood_pct": "Likelihood %",
-            "potential_financial_impact_inr": "Impact (₹)",
-            "criticality_weight": "Criticality",
-            "expected_annual_loss_inr": "EAL (₹)",
-            "calculation": "Calculation",
-        }),
-        use_container_width=True,
-        hide_index=True,
-    )
+        with xai_tab3:
+            st.write("**Step-by-step EAL calculation for every asset:**")
+            breakdown = df[["asset_name", "asset_type", "likelihood", "likelihood_pct",
+                             "potential_financial_impact_inr", "criticality_weight",
+                             "expected_annual_loss_inr"]].copy()
+            breakdown["calculation"] = breakdown.apply(
+                lambda r: (
+                    f"{r['likelihood']:.4f} × {format_inr_short(r['potential_financial_impact_inr'])} "
+                    f"× {r['criticality_weight']:.2f} = {format_inr_short(r['expected_annual_loss_inr'])}"
+                ), axis=1
+            )
+            st.dataframe(
+                breakdown[["asset_name", "asset_type", "likelihood_pct",
+                            "potential_financial_impact_inr", "criticality_weight",
+                            "expected_annual_loss_inr", "calculation"]]
+                .rename(columns={
+                    "asset_name": "Asset",
+                    "asset_type": "Type",
+                    "likelihood_pct": "Likelihood %",
+                    "potential_financial_impact_inr": "Impact (₹)",
+                    "criticality_weight": "Criticality",
+                    "expected_annual_loss_inr": "EAL (₹)",
+                    "calculation": "Calculation",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
 
-with xai_tab3:
-    st.markdown(f"""
+        with xai_tab4:
+            st.markdown(f"""
 ### Investment Optimizer Logic
 
 **Algorithm:** Greedy Knapsack Optimization
@@ -557,22 +653,22 @@ with xai_tab3:
 - Assets are selected top-down until the budget is exhausted
 - This maximizes total risk reduction for any given budget
 
-**Current Budget:** {format_inr_short(budget)}
-**Assets Selected:** {len(selected)}
-**Total Risk Reduced:** {format_inr_short(reduced)}
-**Budget Remaining:** {format_inr_short(max(0, budget - (selected['remediation_cost_inr'].sum() if len(selected) else 0)))}
+**Baseline Budget:** {format_inr_short(_exp_budget)}
+**Assets Selected:** {len(_exp_selected)}
+**Total Risk Reduced:** {format_inr_short(_exp_reduced)}
+**Budget Remaining:** {format_inr_short(max(0, _exp_budget - (_exp_selected['remediation_cost_inr'].sum() if len(_exp_selected) else 0)))}
 """)
 
-    if len(selected):
-        st.write("**Why each asset was selected:**")
-        explanations = explain_budget_allocation(selected.head(10), budget=budget)
-        for i, exp in enumerate(explanations):
-            st.info(f"**#{i+1}** {exp}")
-    else:
-        st.warning("No assets selected at this budget level.")
+            if len(_exp_selected):
+                st.write("**Why each asset was selected:**")
+                explanations = explain_budget_allocation(_exp_selected.head(10), budget=_exp_budget)
+                for i, exp in enumerate(explanations):
+                    st.info(f"**#{i+1}** {exp}")
+            else:
+                st.warning("No assets selected at this budget level.")
 
-with xai_tab4:
-    st.markdown(f"""
+        with xai_tab5:
+            st.markdown(f"""
 ### ML Model Card — Attack Likelihood Predictor
 
 | Property | Value |
@@ -586,17 +682,17 @@ with xai_tab4:
 
 **Feature Importance Ranking** (which inputs matter most to the model):
 """)
-    imp_df = importance.reset_index()
-    imp_df.columns = ["Feature", "Importance"]
-    imp_df["Importance %"] = (imp_df["Importance"] * 100).round(2)
-    st.dataframe(imp_df, use_container_width=True, hide_index=True)
+            imp_df = importance.reset_index()
+            imp_df.columns = ["Feature", "Importance"]
+            imp_df["Feature"] = imp_df["Feature"].apply(lambda f: f.replace("_", " ").title())
+            imp_df["Importance %"] = (imp_df["Importance"] * 100).round(2)
+            st.dataframe(imp_df, use_container_width=True, hide_index=True)
 
-    st.warning(
-        "⚠️ **Important Note:** This model is trained on the current dataset snapshot. "
-        "In production, it would be continuously retrained on real telemetry from "
-        "SIEM, EDR, and vulnerability scanners for validated predictions."
-    )
-
+            st.warning(
+                "**Important Note:** This model is trained on the current dataset snapshot. "
+                "In production, it would be continuously retrained on real telemetry from "
+                "SIEM, EDR, and vulnerability scanners for validated predictions."
+            )
 
 st.divider()
 st.caption("Prototype built for SIH26105 — Team demo. Data shown is synthetic, generated to "

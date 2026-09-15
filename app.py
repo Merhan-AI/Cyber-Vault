@@ -1,7 +1,8 @@
 """
 app.py
 ------
-Streamlit dashboard for the SIH26105 Cyber Risk Quantification prototype.
+Streamlit dashboard for the SIH26105 Cyber Risk Quantification platform.
+Styled with the Obsidian Telemetry Design System (Stitch v4.2).
 
 Run with:
     streamlit run app.py
@@ -14,69 +15,331 @@ import streamlit as st
 import altair as alt
 
 from generate_data import generate_dataset
-from risk_engine import calculate_risk, total_enterprise_risk, top_risky_assets, format_inr, format_inr_short, calculate_var, format_var_summary
+from risk_engine import (
+    calculate_risk,
+    total_enterprise_risk,
+    top_risky_assets,
+    format_inr,
+    format_inr_short,
+    calculate_var,
+    format_var_summary,
+)
 from ml_layer import train_likelihood_model, explain_asset
-from optimizer import build_remediation_options, optimize_budget, risk_reduction_curve, explain_budget_allocation
+from optimizer import (
+    build_remediation_options,
+    optimize_budget,
+    risk_reduction_curve,
+    explain_budget_allocation,
+)
 from data_ingestion import ingest_user_data
 from ai_config import ask_ai, get_status, is_ai_configured
 
-st.set_page_config(page_title="Cyber-Vault | ROI-Driven Risk", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="Cyber-Vault | Actuarial Risk Command Center",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 # =====================================================================
-# 1. Sleek Custom CSS (Hides sidebar entirely, styles tabs & metric cards)
+# 1. OBSIDIAN TELEMETRY CYBER DESIGN SYSTEM (CSS)
 # =====================================================================
-st.markdown('''
+st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&display=swap');
+
+    /* Global resets */
     [data-testid="collapsedControl"] { display: none !important; }
     section[data-testid="stSidebar"] { display: none !important; }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 95%; }
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
     
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    .stApp {
+        background: radial-gradient(circle at 50% 0%, #0d1728 0%, #080c14 70%, #05080e 100%) !important;
+        color: #dfe2ee !important;
+    }
+
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 3rem !important;
+        max-width: 95% !important;
+    }
+
+    /* Headlines */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Space Grotesk', sans-serif !important;
+        letter-spacing: -0.02em;
+        color: #f8fafc !important;
+    }
+
+    /* Monospaced numbers */
+    .mono-num, [data-testid="stMetricValue"] {
+        font-family: 'JetBrains Mono', monospace !important;
+        font-feature-settings: 'tnum' 1, 'zero' 1;
+    }
+
+    /* Top Navigation Tabs */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
-        border-bottom: 1px solid #333;
+        gap: 0.75rem;
+        background: rgba(13, 19, 31, 0.7);
+        padding: 0.4rem 0.6rem;
+        border-radius: 8px;
+        border: 1px solid #1e293b;
+        backdrop-filter: blur(12px);
     }
     .stTabs [data-baseweb="tab"] {
-        height: 55px;
+        height: 48px;
         white-space: pre-wrap;
         background-color: transparent;
-        font-size: 16px;
-        font-weight: 500;
-        color: #888;
-        border-radius: 4px 4px 0 0;
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        color: #94a3b8;
+        border-radius: 6px;
+        padding: 0 1.2rem;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #00f2fe;
+        background: rgba(0, 242, 254, 0.05);
     }
     .stTabs [aria-selected="true"] {
-        color: #00d4ff !important;
-        border-bottom: 3px solid #00d4ff !important;
+        color: #00f2fe !important;
+        background: rgba(0, 242, 254, 0.12) !important;
+        border: 1px solid rgba(0, 242, 254, 0.35) !important;
+        box-shadow: 0 0 15px rgba(0, 242, 254, 0.15);
     }
-    div[data-testid="stMetricValue"] {
-        color: #00d4ff;
+
+    /* Containers & Cards */
+    [data-testid="stVerticalBlockBorderWrapper"] > div {
+        background: rgba(13, 19, 31, 0.85) !important;
+        border: 1px solid #1e293b !important;
+        border-radius: 8px !important;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+        transition: border-color 0.2s ease;
     }
-    .usp-header {
-        background: linear-gradient(90deg, #121212 0%, #1e1e1e 100%);
-        padding: 3rem;
-        border-radius: 12px;
-        margin-bottom: 2rem;
-        border-left: 6px solid #00d4ff;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    [data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+        border-color: rgba(0, 242, 254, 0.3) !important;
     }
-    .usp-title {
-        margin: 0;
-        font-size: 3rem;
+
+    /* Custom HUD Telemetry Banner */
+    .hud-banner {
+        background: linear-gradient(135deg, rgba(13, 22, 38, 0.95) 0%, rgba(8, 12, 20, 0.95) 100%);
+        border: 1px solid rgba(0, 242, 254, 0.25);
+        border-left: 5px solid #00f2fe;
+        border-radius: 10px;
+        padding: 1.5rem 2rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(0, 242, 254, 0.3);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .hud-title-wrap {
+        display: flex;
+        flex-direction: column;
+    }
+    .hud-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(0, 242, 254, 0.1);
+        border: 1px solid rgba(0, 242, 254, 0.3);
+        color: #00f2fe;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        width: fit-content;
+        margin-bottom: 6px;
+    }
+    .pulse-pip {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background-color: #10b981;
+        box-shadow: 0 0 8px #10b981;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { transform: scale(0.95); opacity: 0.8; box-shadow: 0 0 4px #10b981; }
+        50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 10px #10b981; }
+        100% { transform: scale(0.95); opacity: 0.8; box-shadow: 0 0 4px #10b981; }
+    }
+    .hud-title {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 2rem;
         font-weight: 800;
         color: #ffffff;
-        letter-spacing: -1px;
-    }
-    .usp-subtitle {
         margin: 0;
-        font-size: 1.3rem;
-        color: #aaaaaa;
-        margin-top: 0.8rem;
+        letter-spacing: -0.03em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .hud-subtitle {
+        color: #94a3b8;
+        font-size: 0.95rem;
+        margin: 4px 0 0 0;
+    }
+
+    /* Metric HUD Cards */
+    .metric-card {
+        background: rgba(19, 27, 43, 0.7);
+        border: 1px solid rgba(30, 41, 59, 0.8);
+        border-radius: 8px;
+        padding: 1.2rem;
+        position: relative;
+        overflow: hidden;
+        transition: transform 0.2s, border-color 0.2s;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(0, 242, 254, 0.4);
+        box-shadow: 0 6px 20px rgba(0, 242, 254, 0.08);
+    }
+    .metric-card::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, #00f2fe, transparent);
+        opacity: 0.5;
+    }
+    .metric-card-cyan::after { background: linear-gradient(90deg, transparent, #00f2fe, transparent); }
+    .metric-card-amber::after { background: linear-gradient(90deg, transparent, #f59e0b, transparent); }
+    .metric-card-emerald::after { background: linear-gradient(90deg, transparent, #10b981, transparent); }
+    .metric-card-violet::after { background: linear-gradient(90deg, transparent, #818cf8, transparent); }
+
+    .metric-label {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.4rem;
+    }
+    .metric-val {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.85rem;
+        font-weight: 700;
+        color: #ffffff;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.25rem;
+    }
+    .metric-footer {
+        font-size: 0.78rem;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* Comparison Box */
+    .compare-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+    .compare-card-legacy {
+        background: rgba(30, 20, 25, 0.6);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        border-left: 4px solid #ef4444;
+        border-radius: 8px;
+        padding: 1.2rem;
+    }
+    .compare-card-modern {
+        background: rgba(16, 32, 28, 0.6);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        border-left: 4px solid #10b981;
+        border-radius: 8px;
+        padding: 1.2rem;
+    }
+    
+    /* Tag Pills */
+    .tag-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 500;
+    }
+    .tag-cyan { background: rgba(0, 242, 254, 0.12); color: #00f2fe; border: 1px solid rgba(0, 242, 254, 0.3); }
+    .tag-emerald { background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .tag-amber { background: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .tag-crimson { background: rgba(239, 68, 68, 0.12); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    /* Custom Gateway */
+    .gateway-hero {
+        background: linear-gradient(180deg, rgba(13, 24, 44, 0.8) 0%, rgba(8, 12, 20, 0.95) 100%);
+        border: 1px solid rgba(0, 242, 254, 0.2);
+        border-radius: 12px;
+        padding: 3.5rem 2.5rem;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    }
+    .gateway-feature-strip {
+        display: flex;
+        justify-content: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        margin-top: 1.5rem;
+    }
+    
+    /* Button overrides */
+    .stButton button[kind="primary"] {
+        background: linear-gradient(135deg, #00f2fe 0%, #0284c7 100%) !important;
+        color: #080c14 !important;
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 700 !important;
+        border: none !important;
+        box-shadow: 0 0 15px rgba(0, 242, 254, 0.35) !important;
+        transition: all 0.2s ease !important;
+    }
+    .stButton button[kind="primary"]:hover {
+        box-shadow: 0 0 25px rgba(0, 242, 254, 0.6) !important;
+        transform: translateY(-1px) !important;
+    }
+    .stButton button[kind="secondary"] {
+        background: rgba(19, 27, 43, 0.8) !important;
+        border: 1px solid rgba(0, 242, 254, 0.3) !important;
+        color: #00f2fe !important;
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important;
+    }
+    .stButton button[kind="secondary"]:hover {
+        border-color: #00f2fe !important;
+        box-shadow: 0 0 12px rgba(0, 242, 254, 0.25) !important;
+    }
+    
+    /* Inputs */
+    input, textarea {
+        background-color: #070a10 !important;
+        border: 1px solid #1e293b !important;
+        color: #f8fafc !important;
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+    input:focus, textarea:focus {
+        border-color: #00f2fe !important;
+        box-shadow: 0 0 0 1px #00f2fe !important;
     }
 </style>
-''', unsafe_allow_html=True)
-
+""", unsafe_allow_html=True)
 
 DATA_PATH = "data/assets.csv"
 
@@ -94,10 +357,6 @@ def load_data():
     return df
 
 
-
-
-
-
 if "data_source" not in st.session_state:
     st.session_state.data_source = None
 if "custom_df" not in st.session_state:
@@ -108,46 +367,67 @@ if "custom_df" not in st.session_state:
 # APP ROUTING: 1. THE UPLOAD GATEWAY (FIRST IMPRESSION)
 # =====================================================================
 if st.session_state.data_source is None:
-    st.markdown('''
-        <div class="usp-header">
-            <h1 class="usp-title">🛡️ Cyber-Vault</h1>
-            <p class="usp-subtitle">Stop guessing. Start quantifying.<br>Translate technical cyber risk into financial intelligence and optimize your security ROI.</p>
+    st.markdown("""
+        <div class="gateway-hero">
+            <div class="hud-badge"><span class="pulse-pip"></span> SIH26105 AI RISK PLATFORM</div>
+            <h1 style="font-size: 3.2rem; margin-top: 0.5rem; margin-bottom: 0.5rem; letter-spacing: -0.04em;">Cyber-Vault</h1>
+            <p style="font-size: 1.25rem; color: #94a3b8; max-width: 750px; margin: 0 auto; line-height: 1.6;">
+                Translating Technical Vulnerabilities into Rupee-Denominated Financial Exposure (<span style="color:#00f2fe; font-family:'JetBrains Mono';">EAL & 95% VaR</span>) and Optimizing Security Capital ROI.
+            </p>
+            <div class="gateway-feature-strip">
+                <span class="tag-pill tag-cyan">Open FAIR™ Actuarial Framework</span>
+                <span class="tag-pill tag-emerald">Greedy Knapsack ROI Optimizer</span>
+                <span class="tag-pill tag-amber">XAI & SHAP Risk Drivers</span>
+                <span class="tag-pill tag-crimson">Autonomous Cyber Actuary</span>
+            </div>
         </div>
-    ''', unsafe_allow_html=True)
-    
-    st.write("### Initialize Workspace")
-    st.write("Upload your infrastructure data to instantly quantify your risk exposure in terms of Expected Annual Loss (₹).")
-    st.markdown("<br>", unsafe_allow_html=True)
-    
+    """, unsafe_allow_html=True)
+
     col1, col2 = st.columns([1, 1], gap="large")
     with col1:
         with st.container(border=True):
-            st.subheader("📂 Upload Company Data")
-            st.write("Upload your asset inventory (CSV or Excel) containing vulnerability and criticality data.")
-            uploaded_file = st.file_uploader("Drop file here", type=["csv", "xlsx"], label_visibility="collapsed")
+            st.markdown("""
+                <div style="margin-bottom:12px;">
+                    <h3 style="margin:0; font-size:1.3rem;">Upload Infrastructure Telemetry</h3>
+                </div>
+                <p style="color:#94a3b8; font-size:0.92rem; margin-bottom:1rem;">
+                    Upload custom asset inventories (CSV / XLSX) containing vulnerability, criticality, or impact telemetry.
+                </p>
+            """, unsafe_allow_html=True)
+            uploaded_file = st.file_uploader("Drop telemetry file here", type=["csv", "xlsx"], label_visibility="collapsed")
             if uploaded_file:
-                with st.spinner("Analyzing and quantifying risk..."):
+                with st.spinner("Executing actuarial risk engine and training XAI models..."):
                     parsed_df, msgs = ingest_user_data(uploaded_file)
                     if len(parsed_df) == 0:
                         st.error("Could not process the uploaded file.")
-                        for m in msgs: st.error(m)
+                        for m in msgs:
+                            st.error(m)
                     else:
                         parsed_df = calculate_risk(parsed_df)
                         parsed_df = build_remediation_options(parsed_df)
                         st.session_state.custom_df = parsed_df
                         st.session_state.data_source = "custom"
                         st.rerun()
+
     with col2:
         with st.container(border=True):
-            st.subheader("🚀 Explore Demo Environment")
-            st.write("Don't have data on hand? See the platform in action using our pre-generated synthetic enterprise dataset.")
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Load Demo Data", type="primary", use_container_width=True):
+            st.markdown("""
+                <div style="margin-bottom:12px;">
+                    <h3 style="margin:0; font-size:1.3rem;">Launch Live Demo Command Center</h3>
+                </div>
+                <p style="color:#94a3b8; font-size:0.92rem; margin-bottom:1.5rem;">
+                    Instant access to pre-calibrated enterprise dataset with 50 synthetic assets, full XAI attribution, and live ROI simulations.
+                </p>
+            """, unsafe_allow_html=True)
+            if st.button("Initialize Command Center", type="primary", use_container_width=True):
                 st.session_state.data_source = "demo"
                 st.rerun()
-                
+
     st.stop()
 
+# =====================================================================
+# ACTIVE PLATFORM STATE
+# =====================================================================
 if st.session_state.data_source == "custom":
     df = st.session_state.custom_df
 else:
@@ -155,40 +435,350 @@ else:
 
 _ai_status = get_status()
 total_risk = total_enterprise_risk(df)
+_var_95 = calculate_var(df)
+model, importance, mae = train_likelihood_model(df)
+_default_budget = 1_00_00_000
 
+# Top Navigation & HUD Header Bar
+st.markdown(f"""
+    <div class="hud-banner">
+        <div class="hud-title-wrap">
+            <div class="hud-badge"><span class="pulse-pip"></span> ACTUARIAL ENGINE v4.2 LIVE &bull; {'CUSTOM TELEMETRY' if st.session_state.data_source == 'custom' else 'SYNTHETIC ENTERPRISE TELEMETRY'}</div>
+            <div class="hud-title">Cyber-Vault <span style="font-size:1.1rem; font-weight:500; color:#00f2fe; margin-left:8px; font-family:'JetBrains Mono';">COMMAND CENTER</span></div>
+            <p class="hud-subtitle">Quantitative Cyber Risk Financial Intelligence & Capital Investment Optimization</p>
+        </div>
+        <div style="display:flex; gap:12px; align-items:center;">
+            <span class="tag-pill tag-cyan">FAIR™ Quantitative</span>
+            <span class="tag-pill tag-emerald">Monte Carlo VaR 95%</span>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
-# --- HEADER ROW ---
-colA, colB = st.columns([4, 1])
-with colA:
-    st.markdown('''
-        <h2 style='margin-bottom:0;'>🛡️ Cyber-Vault Platform</h2>
-        <p style='color:#aaaaaa; margin-top:0;'>Translating Technical Cyber Risk into Financial Intelligence</p>
-    ''', unsafe_allow_html=True)
-with colB:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🔌 Disconnect & Upload New Data", use_container_width=True):
+# Quick disconnect header row
+col_ctrl1, col_ctrl2 = st.columns([5, 1])
+with col_ctrl2:
+    if st.button("Switch Dataset", use_container_width=True):
         st.session_state.data_source = None
         st.session_state.custom_df = None
         st.rerun()
 
-st.divider()
+# KPI Metric Strip
+col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+with col_kpi1:
+    st.markdown(f"""
+        <div class="metric-card metric-card-cyan">
+            <div class="metric-label">Total Enterprise Exposure</div>
+            <div class="metric-val">{format_inr_short(total_risk)}</div>
+            <div class="metric-footer"><span style="color:#00f2fe;">Expected Annual Loss (EAL)</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col_kpi2:
+    st.markdown(f"""
+        <div class="metric-card metric-card-amber">
+            <div class="metric-label">95% Value at Risk (VaR)</div>
+            <div class="metric-val">{format_inr_short(_var_95)}</div>
+            <div class="metric-footer"><span style="color:#f59e0b;">1-in-20 Year Extreme Tail Risk</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col_kpi3:
+    st.markdown(f"""
+        <div class="metric-card metric-card-emerald">
+            <div class="metric-label">Monitored Assets</div>
+            <div class="metric-val">{len(df)}</div>
+            <div class="metric-footer"><span style="color:#10b981;">100% Telemetry Synchronized</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col_kpi4:
+    high_crit_count = int((df["criticality_weight"] > 0.7).sum())
+    st.markdown(f"""
+        <div class="metric-card metric-card-violet">
+            <div class="metric-label">High-Criticality Assets</div>
+            <div class="metric-val">{high_crit_count}</div>
+            <div class="metric-footer"><span style="color:#818cf8;">Crown Jewels (Weight &gt; 0.70)</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 # --- MAIN NAVIGATION TABS ---
 tab_exec, tab_analytics, tab_roi, tab_chat, tab_xai = st.tabs([
-    "📊 Executive Overview",
-    "📈 Risk Analytics",
-    "💰 ROI & Budget Optimizer",
-    "🤖 AI Risk Chat",
-    "🔍 Explainability (XAI)"
+    "Executive Overview",
+    "Risk Analytics & Heatmaps",
+    "ROI & Capital Allocator",
+    "Autonomous AI Actuary",
+    "Explainability (XAI) & Audit",
 ])
 
+# =====================================================================
+# 1. EXECUTIVE OVERVIEW
+# =====================================================================
+with tab_exec:
+    st.markdown("""
+        <div class="compare-grid">
+            <div class="compare-card-legacy">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <strong style="color:#ef4444; font-family:'Space Grotesk'; font-size:1.05rem;">Legacy Ordinal Matrix</strong>
+                    <span class="tag-pill tag-crimson">Subjective</span>
+                </div>
+                <div style="font-size:1.4rem; font-weight:700; color:#ffffff; font-family:'Space Grotesk';">Risk Score: "HIGH"</div>
+                <p style="color:#94a3b8; font-size:0.88rem; margin-top:6px; margin-bottom:0;">
+                    Vague qualitative labels create ambiguity. Unclear to CFO/Board which assets warrant capital expenditure.
+                </p>
+            </div>
+            <div class="compare-card-modern">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <strong style="color:#10b981; font-family:'Space Grotesk'; font-size:1.05rem;">Cyber-Vault FAIR™ Actuarial Platform</strong>
+                    <span class="tag-pill tag-emerald">Empirical (₹)</span>
+                </div>
+                <div style="font-size:1.4rem; font-weight:700; color:#00f2fe; font-family:'JetBrains Mono';">Expected Loss: """ + format_inr_short(total_risk) + """</div>
+                <p style="color:#94a3b8; font-size:0.88rem; margin-top:6px; margin-bottom:0;">
+                    Continuous actuarial calculation: Likelihood &times; Financial Impact &times; Criticality Weight. Actionable and board-ready.
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
+    with st.container(border=True):
+        st.markdown(f"""
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h4 style="margin:0;">Actuarial VaR Confidence Analysis</h4>
+                <span class="tag-pill tag-amber">Confidence Level: 95.0%</span>
+            </div>
+            <p style="color:#94a3b8; font-size:0.92rem; margin-top:6px;">
+                {format_var_summary(_var_95, total_risk)}
+            </p>
+        """, unsafe_allow_html=True)
+
+    with st.container(border=True):
+        st.markdown("### Top 5 Riskiest Enterprise Assets")
+        _top_raw = top_risky_assets(df).copy()
+        _top_display = _top_raw.rename(columns={
+            "asset_name": "Asset Name",
+            "asset_type": "Asset Type",
+            "expected_annual_loss_inr": "Expected Annual Loss (₹)",
+            "likelihood_pct": "Likelihood (%)",
+            "criticality_weight": "Criticality Weight",
+        })
+        _top_display["Expected Annual Loss (₹)"] = _top_display["Expected Annual Loss (₹)"].apply(lambda x: f"{int(round(x)):,}")
+        _top_display["Likelihood (%)"] = _top_display["Likelihood (%)"].apply(lambda x: f"{x:.2f}%")
+        _top_display["Criticality Weight"] = _top_display["Criticality Weight"].apply(lambda x: f"{x:.2f}")
+        st.dataframe(_top_display, use_container_width=True, hide_index=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("#### AI Explainability (SHAP Vectors) for Top Assets")
+        _top5 = df.nlargest(5, "expected_annual_loss_inr")
+        _shap_features = df[["vulnerability_count", "criticality_weight", "asset_type"]].copy()
+        _shap_features = pd.get_dummies(_shap_features, columns=["asset_type"], drop_first=True)
+        for _, _row in _top5.iterrows():
+            _asset_idx = _row.name
+            with st.expander(f"Why this score? — {_row['asset_name']} (EAL: {format_inr_short(_row['expected_annual_loss_inr'])})"):
+                _explanation = explain_asset(model, _shap_features, _asset_idx)
+                st.markdown(_explanation)
 
 # =====================================================================
-# AI CHATBOT with Gemini Integration
+# 2. RISK ANALYTICS
+# =====================================================================
+with tab_analytics:
+    with st.container(border=True):
+        st.markdown("### Enterprise Risk Telemetry & Distribution")
+        chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
+            "Loss Distribution by Asset",
+            "Loss Exposure by Asset Type",
+            "Vulnerability vs. Attack Likelihood",
+            "Actuarial Risk Composition",
+        ])
+
+        with chart_tab1:
+            st.caption("Top 20 Assets ranked by Expected Annual Loss (₹)")
+            chart_df = df[["asset_name", "expected_annual_loss_inr"]].rename(
+                columns={"asset_name": "Asset", "expected_annual_loss_inr": "Expected Annual Loss (₹)"}
+            ).sort_values("Expected Annual Loss (₹)", ascending=True).tail(20)
+            
+            c_loss = alt.Chart(chart_df).mark_bar(color="#00f2fe", cornerRadiusEnd=4).encode(
+                x=alt.X("Expected Annual Loss (₹):Q", title="Expected Annual Loss (₹)", axis=alt.Axis(labelColor="#94a3b8", titleColor="#00f2fe")),
+                y=alt.Y("Asset:N", title="Enterprise Asset", sort=None, axis=alt.Axis(labelColor="#dfe2ee", titleColor="#94a3b8")),
+                tooltip=["Asset:N", "Expected Annual Loss (₹):Q"]
+            ).properties(height=450)
+            st.altair_chart(c_loss, use_container_width=True)
+
+        with chart_tab2:
+            st.caption("Aggregated risk exposure across infrastructure tiers")
+            type_agg = df.groupby("asset_type").agg(
+                total_eal=("expected_annual_loss_inr", "sum"),
+                count=("asset_id", "count"),
+                avg_likelihood=("likelihood_pct", "mean"),
+            ).sort_values("total_eal", ascending=False).reset_index()
+
+            col_a, col_b = st.columns([1.2, 1])
+            with col_a:
+                c_type = alt.Chart(type_agg).mark_bar(color="#818cf8", cornerRadiusEnd=4).encode(
+                    x=alt.X("asset_type:N", title="Asset Type", axis=alt.Axis(labelColor="#dfe2ee", titleColor="#818cf8", labelAngle=-20)),
+                    y=alt.Y("total_eal:Q", title="Total EAL (₹)", axis=alt.Axis(labelColor="#94a3b8", titleColor="#818cf8")),
+                    tooltip=["asset_type:N", "total_eal:Q", "count:Q"]
+                ).properties(height=350)
+                st.altair_chart(c_type, use_container_width=True)
+            with col_b:
+                display_type = type_agg.copy()
+                display_type["total_eal"] = display_type["total_eal"].apply(lambda x: f"{int(round(x)):,}")
+                display_type["avg_likelihood"] = display_type["avg_likelihood"].map(lambda x: f"{x:.1f}%")
+                display_type.columns = ["Asset Type", "Total EAL (₹)", "Count", "Avg Likelihood"]
+                st.dataframe(display_type, use_container_width=True, hide_index=True)
+
+        with chart_tab3:
+            st.caption("Bubble size corresponds to Expected Annual Loss (₹), color indicates business criticality")
+            scatter_df = df[["asset_name", "vulnerability_count", "likelihood_pct",
+                             "expected_annual_loss_inr", "criticality_weight"]].copy()
+            c_scat = alt.Chart(scatter_df).mark_circle().encode(
+                x=alt.X("vulnerability_count:Q", title="Vulnerability Count (CVEs)", axis=alt.Axis(labelColor="#94a3b8", titleColor="#00f2fe")),
+                y=alt.Y("likelihood_pct:Q", title="Breach Likelihood (%)", axis=alt.Axis(labelColor="#94a3b8", titleColor="#00f2fe")),
+                size=alt.Size("expected_annual_loss_inr:Q", title="EAL Exposure (₹)", scale=alt.Scale(range=[60, 600])),
+                color=alt.Color("criticality_weight:Q", title="Criticality Weight", scale=alt.Scale(scheme="plasma")),
+                tooltip=["asset_name:N", "vulnerability_count:Q", "likelihood_pct:Q", "expected_annual_loss_inr:Q", "criticality_weight:Q"]
+            ).properties(height=400)
+            st.altair_chart(c_scat, use_container_width=True)
+
+        with chart_tab4:
+            st.caption("Decomposition of technical likelihood risk vs financial impact weight (Top 10)")
+            top10 = df.nlargest(10, "expected_annual_loss_inr").copy()
+            top10["Likelihood Score"] = top10["likelihood"] * top10["potential_financial_impact_inr"]
+            top10["Criticality Multiplier"] = (
+                top10["expected_annual_loss_inr"] - top10["Likelihood Score"]
+            ).clip(lower=0)
+            composition = top10.rename(columns={"asset_name": "Asset"})[["Asset", "Likelihood Score", "Criticality Multiplier"]].set_index("Asset")
+            st.bar_chart(composition)
+
+# =====================================================================
+# 3. ROI & CAPITAL OPTIMIZER
+# =====================================================================
+with tab_roi:
+    with st.container(border=True):
+        st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">Security Budget & ROI Optimization</h3>
+                <span class="tag-pill tag-emerald">Greedy Knapsack Algorithm</span>
+            </div>
+            <p style="color:#94a3b8; font-size:0.92rem;">
+                Adjust available cybersecurity capital to maximize risk reduction across infrastructure crown jewels.
+            </p>
+        """, unsafe_allow_html=True)
+
+        slider_col, custom_col = st.columns([3, 1])
+        with slider_col:
+            slider_budget = st.select_slider(
+                "Select Security Budget (₹)",
+                options=list(range(0, 2_00_00_001, 5_00_000)),
+                value=1_00_00_000,
+                format_func=format_inr,
+            )
+        with custom_col:
+            custom_budget = st.number_input(
+                "Exact Budget Override (₹)",
+                min_value=0,
+                max_value=50_00_00_000,
+                value=0,
+                step=1_00_000,
+                help="Set a custom budget amount in rupees.",
+            )
+
+        budget = custom_budget if custom_budget > 0 else slider_budget
+        selected = optimize_budget(df, budget)
+        reduced = selected["risk_reduction_inr"].sum() if len(selected) else 0
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(f"""
+                <div class="metric-card metric-card-cyan">
+                    <div class="metric-label">Allocated Capital</div>
+                    <div class="metric-val">{format_inr_short(budget)}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"""
+                <div class="metric-card metric-card-emerald">
+                    <div class="metric-label">Total Risk Reduced</div>
+                    <div class="metric-val">{format_inr_short(reduced)}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with c3:
+            st.markdown(f"""
+                <div class="metric-card metric-card-violet">
+                    <div class="metric-label">Assets Remediated</div>
+                    <div class="metric-val">{len(selected)}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if len(selected):
+            st.markdown("#### Recommended Remediation Action Plan")
+            display_df = selected[["asset_name", "asset_type", "remediation_cost_inr", "risk_reduction_inr"]].copy()
+            display_df["remediation_cost_inr"] = display_df["remediation_cost_inr"].apply(lambda x: f"{int(round(x)):,}")
+            display_df["risk_reduction_inr"] = display_df["risk_reduction_inr"].apply(lambda x: f"{int(round(x)):,}")
+            st.dataframe(
+                display_df.rename(columns={
+                    "asset_name": "Target Asset",
+                    "asset_type": "Infrastructure Type",
+                    "remediation_cost_inr": "Estimated Remediation Cost (₹)",
+                    "risk_reduction_inr": "Quantified Risk Reduction (₹)",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("#### Diminishing Returns Curve & Optimal Inflection")
+        st.caption("Evaluates risk reduction yield across varying budget tiers. The red dot indicates current budget.")
+
+        curve = risk_reduction_curve(df, max_budget=2_00_00_000)
+        curve["budget_fmt"] = curve["budget_inr"].map(format_inr_short)
+        curve["reduction_fmt"] = curve["risk_reduction_inr"].map(format_inr_short)
+
+        tick_expr = (
+            "datum.value >= 10000000 ? '₹' + round(datum.value / 10000000 * 10) / 10 + 'Cr' : "
+            "(datum.value >= 100000 ? '₹' + round(datum.value / 100000 * 10) / 10 + 'L' : '₹' + datum.value)"
+        )
+
+        base_line = alt.Chart(curve).mark_line(color="#00f2fe", strokeWidth=3).encode(
+            x=alt.X(
+                "budget_inr:Q",
+                title="Security Budget (₹)",
+                axis=alt.Axis(labelExpr=tick_expr, labelColor="#94a3b8", titleColor="#00f2fe"),
+            ),
+            y=alt.Y(
+                "risk_reduction_inr:Q",
+                title="Total Risk Reduced (₹)",
+                axis=alt.Axis(labelExpr=tick_expr, labelColor="#94a3b8", titleColor="#10b981"),
+            ),
+            tooltip=[
+                alt.Tooltip("budget_fmt:N", title="Budget"),
+                alt.Tooltip("reduction_fmt:N", title="Risk Reduced"),
+            ],
+        )
+
+        current_pt_df = pd.DataFrame([{
+            "budget_inr": float(budget),
+            "risk_reduction_inr": float(reduced),
+            "budget_fmt": format_inr_short(budget),
+            "reduction_fmt": format_inr_short(reduced),
+        }])
+
+        current_marker = alt.Chart(current_pt_df).mark_circle(size=180, color="#ef4444").encode(
+            x="budget_inr:Q",
+            y="risk_reduction_inr:Q",
+            tooltip=[
+                alt.Tooltip("budget_fmt:N", title="Selected Budget"),
+                alt.Tooltip("reduction_fmt:N", title="Total Risk Reduced"),
+            ],
+        )
+
+        st.altair_chart(base_line + current_marker, use_container_width=True)
+
+# =====================================================================
+# 4. AUTONOMOUS AI ACTUARY
 # =====================================================================
 def build_data_context(df, budget, selected, reduced, total_risk, model_importance, model_mae):
-    """Build a rich context string from the live data for the AI model."""
     top5 = df.nlargest(5, "expected_annual_loss_inr")
     top5_text = "\n".join([
         f"  - {r['asset_name']} ({r['asset_type']}): EAL={format_inr_short(r['expected_annual_loss_inr'])}, "
@@ -205,7 +795,6 @@ def build_data_context(df, budget, selected, reduced, total_risk, model_importan
 
     type_risk = df.groupby("asset_type")["expected_annual_loss_inr"].sum().sort_values(ascending=False)
     type_risk_text = "\n".join([f"  - {t}: {format_inr_short(v)}" for t, v in type_risk.items()])
-
     importance_text = "\n".join([f"  - {feat}: {imp:.4f}" for feat, imp in model_importance.head(5).items()])
 
     sel_text = ""
@@ -258,20 +847,14 @@ Top Remediation Recommendations:
 
 
 def get_answer(question, df, budget, selected, reduced, total_risk, model_importance, model_mae):
-    """Return an answer: use configured AI provider if key is set, otherwise keyword fallback."""
     ai_ready = is_ai_configured()
-
-    # Try AI provider first
     if ai_ready:
         context = build_data_context(df, budget, selected, reduced, total_risk, model_importance, model_mae)
         response = ask_ai(question, context)
-        if not response.startswith("⚠️"):
+        if not response.startswith("[Error]") and not response.startswith("Error") and not response.startswith("⚠️"):
             return response
-        # Fall through to keyword matching on error
 
-    # Keyword fallback
     q = question.lower()
-
     if any(kw in q for kw in ("why", "explain", "how do you know", "how is that")):
         prev_msgs = [m for m in st.session_state.chat_history if m["role"] == "assistant"]
         if prev_msgs:
@@ -285,21 +868,17 @@ def get_answer(question, df, budget, selected, reduced, total_risk, model_import
                     f"> **Likelihood** ({asset['likelihood_pct']:.0f}%) "
                     f"× **Financial Impact** ({format_inr_short(asset['potential_financial_impact_inr'])}) "
                     f"× **Criticality Weight** ({asset['criticality_weight']:.2f})\n\n"
-                    f"A higher value in any of these three factors raises the "
-                    f"Expected Annual Loss proportionally."
+                    f"A higher value in any of these three factors raises the Expected Annual Loss proportionally."
                 )
 
     if "highest risk" in q or "biggest risk" in q:
         top = df.iloc[0]
         return (f"Your highest financial risk is **{top['asset_name']}**, "
-                f"with an Expected Annual Loss of "
-                f"**{format_inr_short(top['expected_annual_loss_inr'])}**.")
+                f"with an Expected Annual Loss of **{format_inr_short(top['expected_annual_loss_inr'])}**.")
     elif "total risk" in q or "total exposure" in q:
-        return (f"Your total enterprise cyber risk exposure is "
-                f"**{format_inr_short(total_risk)}** per year.")
+        return f"Your total enterprise cyber risk exposure is **{format_inr_short(total_risk)}** per year."
     elif "budget" in q or "invest" in q:
-        return ("Check the **Investment Optimization** section below to see "
-                "budget recommendations and risk reduction analysis.")
+        return "Check the **ROI & Capital Allocator** tab to see greedy knapsack budget recommendations and risk reduction curves."
     else:
         if ai_ready:
             return "I couldn't generate a response. Please try rephrasing your question."
@@ -311,324 +890,104 @@ def get_answer(question, df, budget, selected, reduced, total_risk, model_import
         )
 
 
-# Initialize chat history
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# We need budget/selected/model data for the chatbot, so compute them early
-# (also used later in the dashboard)
-# Default budget for initial chatbot context
-_default_budget = 1_00_00_000
-
-# Train ML model (cached)
-model, importance, mae = train_likelihood_model(df)
-
-# =====================================================================
-# SECTIONS (Routed by Sidebar Navigation)
-# =====================================================================
-
-with tab_exec:
-    # --- Traditional vs Our Approach ---
-    with st.container(border=True):
-        comp_col1, comp_col2 = st.columns(2)
-        comp_col1.error(
-            "**Traditional Approach**  \n"
-            "**Risk Level:** Medium  \n"
-            "*No financial context, hard to act on*"
-        )
-        comp_col2.success(
-            f"**Our Approach**  \n"
-            f"**Expected Annual Loss:** {format_inr_short(total_risk)}  \n"
-            "*Clear, actionable, business-ready*"
-        )
-
-    # --- Top Summary Metrics ---
-    with st.container(border=True):
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Enterprise Risk (Expected Annual Loss)", format_inr_short(total_risk))
-        _var_95 = calculate_var(df)
-        col2.metric("Value at Risk (95%)", format_inr_short(_var_95))
-        col3.metric("Assets Monitored", len(df))
-        col4.metric("High-Criticality Assets", int((df["criticality_weight"] > 0.7).sum()))
-        st.info(format_var_summary(_var_95, total_risk))
-
 with tab_chat:
     with st.container(border=True):
-        st.subheader("Ask the Platform")
+        st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">Autonomous AI Cyber Actuary</h3>
+                <span class="tag-pill tag-cyan">FAIR™ Actuarial Reasoning</span>
+            </div>
+        """, unsafe_allow_html=True)
 
         if _ai_status["configured"]:
-            st.caption(f"Mode: AI-assisted ({_ai_status['provider'].capitalize()} / {_ai_status['model']})")
+            st.caption(f"Status: AI Online ({_ai_status['provider'].capitalize()} / {_ai_status['model']})")
         else:
-            st.caption("Mode: Keyword-based (configure API key in `.env` to enable AI)")
+            st.caption("Status: Fallback Deterministic Mode (Configure API key in `.env` to enable full LLM)")
 
-        st.markdown(
-            "<style>div[data-testid='stChatInput'] {margin-top: 0;} "
-            ".stColumns + div[data-testid='stChatMessage'] {margin-top: -0.5rem;}</style>",
-            unsafe_allow_html=True,
-        )
-
-        eq1, eq2, eq3 = st.columns(3, gap="small")
-
-        # Pre-compute default optimization for chatbot context
         _sel_default = optimize_budget(df, _default_budget)
         _red_default = _sel_default["risk_reduction_inr"].sum() if len(_sel_default) else 0
 
-        if eq1.button("What's our highest risk?", use_container_width=True):
+        st.write("**Quick Query Prompts:**")
+        eq1, eq2, eq3 = st.columns(3, gap="small")
+        if eq1.button("What's our highest risk asset?", use_container_width=True):
             q = "What's our highest risk?"
             st.session_state.chat_history.append({"role": "user", "content": q})
             st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
                 q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae
             )})
-        if eq2.button("What's our total exposure?", use_container_width=True):
+        if eq2.button("What's our total financial exposure?", use_container_width=True):
             q = "What's our total exposure?"
             st.session_state.chat_history.append({"role": "user", "content": q})
             st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
                 q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae
             )})
-        if eq3.button("Budget recommendation?", use_container_width=True):
+        if eq3.button("Budget ROI allocation advice?", use_container_width=True):
             q = "Budget recommendation?"
             st.session_state.chat_history.append({"role": "user", "content": q})
             st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
                 q, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae
             )})
 
-
+        st.markdown("---")
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        if prompt := st.chat_input(placeholder="Ask anything about your cyber risk..."):
+        if prompt := st.chat_input(placeholder="Ask anything about your cyber risk posture, CVEs, or budget..."):
             st.session_state.chat_history.append({"role": "user", "content": prompt})
             st.session_state.chat_history.append({"role": "assistant", "content": get_answer(
                 prompt, df, _default_budget, _sel_default, _red_default, total_risk, importance, mae
             )})
             st.rerun()
 
-with tab_analytics:
-    # --- Top Risky Assets ---
-    with st.container(border=True):
-        st.subheader("Top 5 Riskiest Assets")
-        _top_display = top_risky_assets(df).rename(columns={
-            "asset_name": "Asset Name",
-            "asset_type": "Asset Type",
-            "expected_annual_loss_inr": "Expected Annual Loss (₹)",
-            "likelihood_pct": "Likelihood (%)",
-            "criticality_weight": "Criticality Weight",
-        })
-        st.dataframe(_top_display, use_container_width=True, hide_index=True)
-
-        # --- SHAP "Why this score?" expanders for each of the top 5 ---
-        _top5 = df.nlargest(5, "expected_annual_loss_inr")
-        _shap_features = df[["vulnerability_count", "criticality_weight", "asset_type"]].copy()
-        _shap_features = pd.get_dummies(_shap_features, columns=["asset_type"], drop_first=True)
-        for _, _row in _top5.iterrows():
-            _asset_idx = _row.name          # original DataFrame index
-            with st.expander(f"Why this score? — {_row['asset_name']}"):
-                _explanation = explain_asset(model, _shap_features, _asset_idx)
-                st.markdown(_explanation)
-
-    # --- Risk by Business Unit ---
-    with st.container(border=True):
-        st.subheader("Risk by Business Unit")
-        st.caption(
-            "Since real business-unit tagging wasn't available in this dataset, asset type is used as a "
-            "proxy grouping to demonstrate the platform's ability to break down risk below the organization level."
-        )
-        _bu_risk = df.groupby("asset_type")["expected_annual_loss_inr"].sum().sort_values(ascending=True)
-        _bu_risk.index.name = "Business Unit (Asset Type)"
-        st.bar_chart(_bu_risk, horizontal=True)
-
-    # --- Charts — Risk Analytics ---
-    with st.container(border=True):
-        st.subheader("Risk Analytics")
-
-        chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
-            "Risk Distribution", "By Asset Type", "Vulnerability vs Likelihood", "Risk Composition"
-        ])
-
-        with chart_tab1:
-            st.write("**Expected Annual Loss by Asset** (sorted highest → lowest)")
-            chart_df = df[["asset_name", "expected_annual_loss_inr"]].rename(
-                columns={"asset_name": "Asset", "expected_annual_loss_inr": "Expected Annual Loss (₹)"}
-            ).copy()
-            chart_df = chart_df.sort_values("Expected Annual Loss (₹)", ascending=True).tail(20)
-            st.bar_chart(chart_df.set_index("Asset"), horizontal=True)
-
-        with chart_tab2:
-            st.write("**Total Risk Exposure by Asset Type**")
-            type_agg = df.groupby("asset_type").agg(
-                total_eal=("expected_annual_loss_inr", "sum"),
-                count=("asset_id", "count"),
-                avg_likelihood=("likelihood_pct", "mean"),
-            ).sort_values("total_eal", ascending=False).reset_index()
-
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.bar_chart(type_agg.rename(columns={"asset_type": "Asset Type", "total_eal": "Total EAL (₹)"}).set_index("Asset Type")["Total EAL (₹)"])
-            with col_b:
-                st.write("**Breakdown Table**")
-                display_type = type_agg.copy()
-                display_type["total_eal"] = display_type["total_eal"].map(format_inr_short)
-                display_type["avg_likelihood"] = display_type["avg_likelihood"].map(lambda x: f"{x:.1f}%")
-                display_type.columns = ["Asset Type", "Total EAL", "Count", "Avg Likelihood"]
-                st.dataframe(display_type, use_container_width=True, hide_index=True)
-
-        with chart_tab3:
-            st.write("**Vulnerability Count vs. Attack Likelihood** (bubble size = EAL)")
-            scatter_df = df[["asset_name", "vulnerability_count", "likelihood_pct",
-                             "expected_annual_loss_inr", "criticality_weight"]].rename(columns={
-                "vulnerability_count": "Vulnerability Count",
-                "likelihood_pct": "Likelihood (%)",
-                "expected_annual_loss_inr": "Expected Annual Loss (₹)",
-                "criticality_weight": "Criticality Weight",
-            }).copy()
-            st.scatter_chart(
-                scatter_df,
-                x="Vulnerability Count",
-                y="Likelihood (%)",
-                size="Expected Annual Loss (₹)",
-                color="Criticality Weight",
-            )
-
-        with chart_tab4:
-            st.write("**Risk Factor Contribution** (top 10 assets)")
-            top10 = df.nlargest(10, "expected_annual_loss_inr").copy()
-            top10["Likelihood Score"] = top10["likelihood"] * top10["potential_financial_impact_inr"]
-            top10["Criticality Multiplier"] = (
-                top10["expected_annual_loss_inr"] - top10["Likelihood Score"]
-            ).clip(lower=0)
-            composition = top10.rename(columns={"asset_name": "Asset"})[["Asset", "Likelihood Score", "Criticality Multiplier"]].set_index("Asset")
-            st.bar_chart(composition)
-
-with tab_roi:
-    with st.container(border=True):
-        st.subheader("Investment Optimization")
-
-        slider_col, custom_col = st.columns([3, 1])
-        with slider_col:
-            slider_budget = st.select_slider(
-                "Security Budget",
-                options=list(range(0, 2_00_00_001, 5_00_000)),
-                value=1_00_00_000,
-                format_func=format_inr,
-            )
-        with custom_col:
-            custom_budget = st.number_input(
-                "Add Custom Budget (₹)",
-                min_value=0,
-                max_value=50_00_00_000,
-                value=0,
-                step=1_00_000,
-                help="Enter an exact budget amount. When set above 0, this overrides the slider.",
-            )
-
-        budget = custom_budget if custom_budget > 0 else slider_budget
-
-        selected = optimize_budget(df, budget)
-        reduced = selected["risk_reduction_inr"].sum() if len(selected) else 0
-
-        c1, c2 = st.columns(2)
-        c1.metric("Recommended Assets to Remediate", len(selected))
-        c2.metric("Total Risk Reduced", format_inr_short(reduced))
-
-        if len(selected):
-            st.write("Recommended remediation plan for this budget:")
-            display_df = selected[["asset_name", "asset_type", "remediation_cost_inr", "risk_reduction_inr"]].copy()
-            display_df["remediation_cost_inr"] = display_df["remediation_cost_inr"].map(format_inr_short)
-            display_df["risk_reduction_inr"] = display_df["risk_reduction_inr"].map(format_inr_short)
-            st.dataframe(
-                display_df.rename(columns={
-                    "asset_name": "Asset",
-                    "asset_type": "Type",
-                    "remediation_cost_inr": "Cost (₹)",
-                    "risk_reduction_inr": "Risk Reduced (₹)",
-                }),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        st.markdown("**Investment vs. Risk Reduction Curve**")
-        st.caption("Shows diminishing returns as budget grows. The marker highlights your currently selected budget.")
-
-        curve = risk_reduction_curve(df, max_budget=2_00_00_000)
-        curve["budget_fmt"] = curve["budget_inr"].map(format_inr_short)
-        curve["reduction_fmt"] = curve["risk_reduction_inr"].map(format_inr_short)
-
-        tick_expr = (
-            "datum.value >= 10000000 ? '₹' + round(datum.value / 10000000 * 10) / 10 + 'Cr' : "
-            "(datum.value >= 100000 ? '₹' + round(datum.value / 100000 * 10) / 10 + 'L' : '₹' + datum.value)"
-        )
-
-        base_line = alt.Chart(curve).mark_line(color="#1f77b4", strokeWidth=3).encode(
-            x=alt.X(
-                "budget_inr:Q",
-                title="Security Budget (₹)",
-                axis=alt.Axis(labelExpr=tick_expr),
-            ),
-            y=alt.Y(
-                "risk_reduction_inr:Q",
-                title="Total Risk Reduced (₹)",
-                axis=alt.Axis(labelExpr=tick_expr),
-            ),
-            tooltip=[
-                alt.Tooltip("budget_fmt:N", title="Budget"),
-                alt.Tooltip("reduction_fmt:N", title="Risk Reduced"),
-            ],
-        )
-
-        current_pt_df = pd.DataFrame([{
-            "budget_inr": float(budget),
-            "risk_reduction_inr": float(reduced),
-            "budget_fmt": format_inr_short(budget),
-            "reduction_fmt": format_inr_short(reduced),
-        }])
-
-        current_marker = alt.Chart(current_pt_df).mark_circle(size=140, color="#d62728").encode(
-            x="budget_inr:Q",
-            y="risk_reduction_inr:Q",
-            tooltip=[
-                alt.Tooltip("budget_fmt:N", title="Selected Budget"),
-                alt.Tooltip("reduction_fmt:N", title="Total Risk Reduced"),
-            ],
-        )
-
-        st.altair_chart(base_line + current_marker, use_container_width=True)
-
+# =====================================================================
+# 5. EXPLAINABILITY (XAI) & AUDIT
+# =====================================================================
 with tab_xai:
-    # Pre-compute budget & selected for explanations
     _exp_budget = 1_00_00_000
     _exp_selected = optimize_budget(df, _exp_budget)
     _exp_reduced = _exp_selected["risk_reduction_inr"].sum() if len(_exp_selected) else 0
 
     with st.container(border=True):
-        st.subheader("Explainability & Transparency Logs")
-        st.write(
-            "This section provides full transparency into **how every number on this dashboard was calculated**. "
-            "Use this to explain the platform's logic to judges, auditors, or leadership."
-        )
+        st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">Explainability (XAI) & Audit Transparency</h3>
+                <span class="tag-pill tag-violet">Open FAIR™ & Random Forest ML</span>
+            </div>
+            <p style="color:#94a3b8; font-size:0.92rem;">
+                Empirical transparency into how every rupee, probability score, and optimization recommendation was calculated.
+            </p>
+        """, unsafe_allow_html=True)
 
         xai_tab1, xai_tab2, xai_tab3, xai_tab4, xai_tab5 = st.tabs([
-            "Risk Drivers", "Risk Formula", "Per-Asset Breakdown", "Optimizer Rationale", "ML Model Card"
+            "Risk Drivers (Feature Importance)",
+            "FAIR Risk Formula",
+            "Per-Asset Calculation Ledger",
+            "Optimizer Knapsack Logic",
+            "ML Model Card",
         ])
 
         with xai_tab1:
-            st.write("Which factors contribute most to attack likelihood, according to the model:")
+            st.caption("Relative weight of input features in predicting attack likelihood")
             vuln_imp = float(importance.get("vulnerability_count", 0.0))
             crit_imp = float(importance.get("criticality_weight", 0.0))
             asset_type_imp = float(importance[importance.index.str.startswith("asset_type_")].sum())
 
             grouped_drivers = pd.DataFrame([
-                {"Risk Factor": "Vulnerability Count", "Relative Importance": vuln_imp},
+                {"Risk Factor": "Vulnerability Count (CVEs)", "Relative Importance": vuln_imp},
                 {"Risk Factor": "Criticality Weight", "Relative Importance": crit_imp},
-                {"Risk Factor": "Asset Type", "Relative Importance": asset_type_imp},
+                {"Risk Factor": "Asset Type Classification", "Relative Importance": asset_type_imp},
             ]).sort_values("Relative Importance", ascending=False)
             grouped_drivers["Importance Pct"] = (grouped_drivers["Relative Importance"] * 100).round(2).astype(str) + "%"
 
-            drivers_chart = alt.Chart(grouped_drivers).mark_bar(color="#1f77b4").encode(
-                x=alt.X("Risk Factor:N", title="Risk Factor", sort=alt.SortField("Relative Importance", order="descending")),
-                y=alt.Y("Relative Importance:Q", title="Relative Importance"),
+            drivers_chart = alt.Chart(grouped_drivers).mark_bar(color="#00f2fe", cornerRadiusEnd=4).encode(
+                x=alt.X("Risk Factor:N", title="Risk Factor", sort=alt.SortField("Relative Importance", order="descending"), axis=alt.Axis(labelColor="#dfe2ee", titleColor="#00f2fe")),
+                y=alt.Y("Relative Importance:Q", title="Relative Importance", axis=alt.Axis(labelColor="#94a3b8", titleColor="#00f2fe")),
                 tooltip=[alt.Tooltip("Risk Factor:N"), alt.Tooltip("Importance Pct:N", title="Relative Importance")],
-            ).properties(height=350)
+            ).properties(height=320)
             st.altair_chart(drivers_chart, use_container_width=True)
 
         with xai_tab2:
@@ -641,20 +1000,17 @@ Expected Annual Loss (EAL) = Likelihood × Financial Impact × Criticality Weigh
 
 | Variable | Description | Range | Source |
 |---|---|---|---|
-| **Likelihood** | Annual probability of a breach/attack on this asset | 0.01 – 0.95 | Vulnerability scans, threat intelligence, SIEM telemetry |
-| **Financial Impact** (₹) | Direct cost if this asset is breached (forensics, fines, downtime) | ₹5L – ₹1.5Cr | Business Impact Assessment (BIA) |
-| **Criticality Weight** | How important this asset is to business operations | 0.1 – 1.0 | Asset owner classification |
+| **Likelihood** | Annual probability of breach on this asset | 0.01 – 0.95 | Vulnerability scans, SIEM & threat feeds |
+| **Financial Impact** (₹) | Direct loss if breached (forensics, downtime, fines) | ₹5L – ₹1.5Cr | Business Impact Assessment (BIA) |
+| **Criticality Weight** | Operational importance to enterprise | 0.1 – 1.0 | Asset owner classification |
 
-**Why multiply?** This follows the actuarial expected-value model used in insurance and the
-[FAIR framework](https://www.fairinstitute.org/). Multiplying probability × loss × importance
-produces a single rupee figure that leadership can compare across assets and use to justify budgets.
-
-**Total Enterprise Risk** is simply the sum of all individual asset EALs:
-""")
-            st.code(f"Total Enterprise Risk = Σ(EAL) = {format_inr(total_risk)}", language="text")
+```text
+Total Enterprise Risk = Σ(EAL) = """ + format_inr(total_risk) + """
+```
+            """)
 
         with xai_tab3:
-            st.write("**Step-by-step EAL calculation for every asset:**")
+            st.caption("Step-by-step mathematical derivation for every monitored asset:")
             breakdown = df[["asset_name", "asset_type", "likelihood", "likelihood_pct",
                              "potential_financial_impact_inr", "criticality_weight",
                              "expected_annual_loss_inr"]].copy()
@@ -664,18 +1020,22 @@ produces a single rupee figure that leadership can compare across assets and use
                     f"× {r['criticality_weight']:.2f} = {format_inr_short(r['expected_annual_loss_inr'])}"
                 ), axis=1
             )
+            ledger_table = breakdown[["asset_name", "asset_type", "likelihood_pct",
+                        "potential_financial_impact_inr", "criticality_weight",
+                        "expected_annual_loss_inr", "calculation"]].copy()
+            ledger_table["potential_financial_impact_inr"] = ledger_table["potential_financial_impact_inr"].apply(lambda x: f"{int(round(x)):,}")
+            ledger_table["expected_annual_loss_inr"] = ledger_table["expected_annual_loss_inr"].apply(lambda x: f"{int(round(x)):,}")
+            ledger_table["likelihood_pct"] = ledger_table["likelihood_pct"].apply(lambda x: f"{x:.2f}%")
+            ledger_table["criticality_weight"] = ledger_table["criticality_weight"].apply(lambda x: f"{x:.2f}")
             st.dataframe(
-                breakdown[["asset_name", "asset_type", "likelihood_pct",
-                            "potential_financial_impact_inr", "criticality_weight",
-                            "expected_annual_loss_inr", "calculation"]]
-                .rename(columns={
+                ledger_table.rename(columns={
                     "asset_name": "Asset",
                     "asset_type": "Type",
                     "likelihood_pct": "Likelihood %",
                     "potential_financial_impact_inr": "Impact (₹)",
                     "criticality_weight": "Criticality",
                     "expected_annual_loss_inr": "EAL (₹)",
-                    "calculation": "Calculation",
+                    "calculation": "Mathematical Derivation",
                 }),
                 use_container_width=True,
                 hide_index=True,
@@ -683,26 +1043,17 @@ produces a single rupee figure that leadership can compare across assets and use
 
         with xai_tab4:
             st.markdown(f"""
-### Investment Optimizer Logic
+### Investment Optimizer Logic (Greedy Knapsack)
 
-**Algorithm:** Greedy Knapsack Optimization
-- All assets are ranked by **risk reduction per rupee spent** (ROI = risk_reduction ÷ remediation_cost)
-- Assets are selected top-down until the budget is exhausted
-- This maximizes total risk reduction for any given budget
-
-**Baseline Budget:** {format_inr_short(_exp_budget)}
-**Assets Selected:** {len(_exp_selected)}
-**Total Risk Reduced:** {format_inr_short(_exp_reduced)}
-**Budget Remaining:** {format_inr_short(max(0, _exp_budget - (_exp_selected['remediation_cost_inr'].sum() if len(_exp_selected) else 0)))}
+- Assets ranked by **risk reduction per rupee spent** (ROI = `risk_reduction ÷ remediation_cost`).
+- Selected top-down until the capital budget is fully deployed.
+- **Baseline Budget:** {format_inr_short(_exp_budget)} | **Assets Selected:** {len(_exp_selected)} | **Total Reduced:** {format_inr_short(_exp_reduced)}
 """)
-
             if len(_exp_selected):
-                st.write("**Why each asset was selected:**")
+                st.write("**Remediation Allocation Rationale:**")
                 explanations = explain_budget_allocation(_exp_selected.head(10), budget=_exp_budget)
                 for i, exp in enumerate(explanations):
                     st.info(f"**#{i+1}** {exp}")
-            else:
-                st.warning("No assets selected at this budget level.")
 
         with xai_tab5:
             st.markdown(f"""
@@ -711,13 +1062,9 @@ produces a single rupee figure that leadership can compare across assets and use
 | Property | Value |
 |---|---|
 | **Algorithm** | RandomForest Regressor (500 trees) |
-| **Target Variable** | `likelihood` (probability of attack, 0-1) |
-| **Features Used** | `vulnerability_count`, `criticality_weight`, `asset_type` (one-hot encoded) |
-| **Train/Test Split** | 75% / 25% |
+| **Target Variable** | `likelihood` (Attack probability 0.0 - 1.0) |
+| **Features Used** | `vulnerability_count`, `criticality_weight`, `asset_type` |
 | **Mean Absolute Error** | {mae:.4f} |
-| **Purpose** | Rank which factors drive risk — the "AI Decision Support" component |
-
-**Feature Importance Ranking** (which inputs matter most to the model):
 """)
             imp_df = importance.reset_index()
             imp_df.columns = ["Feature", "Importance"]
@@ -725,12 +1072,5 @@ produces a single rupee figure that leadership can compare across assets and use
             imp_df["Importance %"] = (imp_df["Importance"] * 100).round(2)
             st.dataframe(imp_df, use_container_width=True, hide_index=True)
 
-            st.warning(
-                "**Important Note:** This model is trained on the current dataset snapshot. "
-                "In production, it would be continuously retrained on real telemetry from "
-                "SIEM, EDR, and vulnerability scanners for validated predictions."
-            )
-
-st.divider()
-st.caption("Prototype built for SIH26105 — Team demo. Data shown is synthetic, generated to "
-           "illustrate the platform's logic, not real company data.")
+st.markdown("---")
+st.caption("Cyber-Vault | SIH26105 AI Cyber Risk Quantification & Investment Optimization Command Center.")

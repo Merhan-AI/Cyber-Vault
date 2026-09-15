@@ -241,9 +241,9 @@ def normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
             if alias in df.columns and target_col not in matched_targets:
                 if alias != target_col:
                     rename_map[alias] = target_col
-                    messages.append(f"✅ Mapped your column '{alias}' → '{target_col}'")
+                    messages.append(f"Mapped your column '{alias}' → '{target_col}'")
                 else:
-                    messages.append(f"✅ Found column '{target_col}' (exact match)")
+                    messages.append(f"Found column '{target_col}' (exact match)")
                 matched_targets.add(target_col)
                 break
 
@@ -260,7 +260,7 @@ def normalize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
                 if target in unmapped_targets and substring in col:
                     df = df.rename(columns={col: target})
                     messages.append(
-                        f"🔍 Fuzzy-mapped your column '{col}' → '{target}' "
+                        f"Fuzzy-mapped your column '{col}' → '{target}' "
                         f"(matched substring '{substring}')"
                     )
                     unmapped_targets.discard(target)
@@ -424,7 +424,7 @@ def validate_data(df: pd.DataFrame) -> tuple[bool, list[str]]:
 
     # Check: at least 1 row
     if df is None or len(df) == 0:
-        return False, ["❌ The uploaded file contains no data rows."]
+        return False, ["The uploaded file contains no data rows."]
 
     # Post-parsing type validation: ensure required numeric columns contain numbers
     numeric_cols = [
@@ -436,53 +436,53 @@ def validate_data(df: pd.DataFrame) -> tuple[bool, list[str]]:
             non_numeric = pd.to_numeric(df[col], errors="coerce").isna().sum()
             if non_numeric > 0:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-                messages.append(f"⚠️ Cleaned {non_numeric} non-numeric/injected value(s) in '{col}'")
+                messages.append(f"Cleaned {non_numeric} non-numeric/injected value(s) in '{col}'")
 
     # 13. Drop exact duplicate rows and warn about them
     dup_count = df.duplicated().sum()
     if dup_count > 0:
         df.drop_duplicates(inplace=True)
-        messages.append(f"⚠️ Dropped {dup_count} exact duplicate row(s)")
+        messages.append(f"Dropped {dup_count} exact duplicate row(s)")
 
     # 14. Warn if any asset_name values are duplicated
     if "asset_name" in df.columns:
         asset_dup_count = df["asset_name"].duplicated().sum()
         if asset_dup_count > 0:
-            messages.append(f"⚠️ {asset_dup_count} duplicated asset_name(s) found")
+            messages.append(f"{asset_dup_count} duplicated asset_name(s) found")
 
     # Check: required columns exist
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
-        return False, [f"❌ Critical columns still missing after processing: {', '.join(missing)}"]
+        return False, [f"Critical columns still missing after processing: {', '.join(missing)}"]
 
     # Check: likelihood range
     out_of_range = ((df["likelihood"] < 0) | (df["likelihood"] > 1)).sum()
     if out_of_range > 0:
-        messages.append(f"⚠️ {out_of_range} row(s) had likelihood outside 0-1 range — clamped")
+        messages.append(f"{out_of_range} row(s) had likelihood outside 0-1 range — clamped")
 
     # Check: criticality_weight range
     out_of_range = ((df["criticality_weight"] < 0) | (df["criticality_weight"] > 1)).sum()
     if out_of_range > 0:
-        messages.append(f"⚠️ {out_of_range} row(s) had criticality_weight outside 0-1 range — clamped")
+        messages.append(f"{out_of_range} row(s) had criticality_weight outside 0-1 range — clamped")
 
     # Check: financial impact positive
     negative_impact = (df["potential_financial_impact_inr"] < 0).sum()
     if negative_impact > 0:
-        messages.append(f"⚠️ {negative_impact} row(s) had negative financial impact — set to 0")
+        messages.append(f"{negative_impact} row(s) had negative financial impact — set to 0")
 
     # Check: vulnerability_count non-negative
     negative_vulns = (df["vulnerability_count"] < 0).sum()
     if negative_vulns > 0:
-        messages.append(f"⚠️ {negative_vulns} row(s) had negative vulnerability count — set to 0")
+        messages.append(f"{negative_vulns} row(s) had negative vulnerability count — set to 0")
 
     # Check: NaN prevalence in key numeric columns
     for col in ["likelihood", "potential_financial_impact_inr", "criticality_weight"]:
         nan_count = df[col].isna().sum()
         if nan_count > 0:
-            messages.append(f"⚠️ {nan_count} NaN value(s) in '{col}' — filled with defaults")
+            messages.append(f"{nan_count} NaN value(s) in '{col}' — filled with defaults")
 
     if not messages:
-        messages.append("✅ Data validation passed — all values within expected ranges")
+        messages.append("Data validation passed — all values within expected ranges")
 
     return True, messages
 
@@ -506,12 +506,12 @@ def ingest_user_data(uploaded_file) -> tuple[pd.DataFrame, list[str]]:
     try:
         df = parse_uploaded_file(uploaded_file)
     except Exception as e:
-        return pd.DataFrame(), [f"❌ Failed to parse file: {e}"]
+        return pd.DataFrame(), [f"Failed to parse file: {e}"]
 
     if len(df) == 0:
-        return pd.DataFrame(), ["❌ The uploaded file contains no data rows."]
+        return pd.DataFrame(), ["The uploaded file contains no data rows."]
 
-    all_messages.append(f"📄 Parsed {len(df)} rows and {len(df.columns)} columns from '{uploaded_file.name}'")
+    all_messages.append(f"Parsed {len(df)} rows and {len(df.columns)} columns from '{uploaded_file.name}'")
 
     # Step 2: Normalize columns
     df, norm_messages = normalize_columns(df)
